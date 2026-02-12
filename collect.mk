@@ -4,6 +4,8 @@ SCR1_COLLECT_CFG ?= MAX
 SCR1_COLLECT_TRACE ?= 0
 SCR1_COLLECT_BUSES ?= AXI AHB
 SCR1_COLLECT_TARGETS ?= isr_sample riscv_arch riscv_compliance riscv_isa hello coremark dhrystone21
+SCR1_BENCH_TARGETS ?= coremark dhrystone21
+SCR1_BENCH_ADD_LDFLAGS ?= -Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group -Wl,--defsym=end=_end
 
 .DEFAULT_GOAL := all
 
@@ -24,7 +26,10 @@ scr1: $(ARTIFACTS_DIR)
 		build_dir="$(SCR1_DIR)/build/verilator_wf_$${bus}_$(SCR1_COLLECT_CFG)_imc_IPIC_1_TCM_1_VIRQ_1_TRACE_$(SCR1_COLLECT_TRACE)"; \
 		for target in $(SCR1_COLLECT_TARGETS); do \
 			echo "Collecting $$bus/$$target"; \
-			$(MAKE) -C $(SCR1_DIR) run_verilator_wf CFG=$(SCR1_COLLECT_CFG) BUS=$$bus TARGETS="$$target" TRACE=$(SCR1_COLLECT_TRACE); \
+			case " $(SCR1_BENCH_TARGETS) " in \
+				*" $$target "*) $(MAKE) -C $(SCR1_DIR) run_verilator_wf CFG=$(SCR1_COLLECT_CFG) BUS=$$bus TARGETS="$$target" TRACE=$(SCR1_COLLECT_TRACE) ADD_LDFLAGS='$(SCR1_BENCH_ADD_LDFLAGS)' ;; \
+				*) $(MAKE) -C $(SCR1_DIR) run_verilator_wf CFG=$(SCR1_COLLECT_CFG) BUS=$$bus TARGETS="$$target" TRACE=$(SCR1_COLLECT_TRACE) ADD_LDFLAGS= ;; \
+			esac; \
 			cp "$$build_dir/simx.vcd" "$(ARTIFACTS_DIR)/scr1_$${cfg_lc}_$${bus_lc}_$${target}.vcd"; \
 		done; \
 	done
