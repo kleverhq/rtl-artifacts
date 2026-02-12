@@ -6,11 +6,14 @@ ARG RUST_VERSION=1.93.0
 ARG OPENCODE_VERSION=1.1.53
 ARG PRECOMMIT_VERSION=4.5.1
 ARG COMMITIZEN_VERSION=4.12.1
+ARG MODELSIM_INSTALLER=ModelSimSetup-20.1.0.711-linux.run
+ARG MODELSIM_INSTALLER_URL=https://downloads.intel.com/akdlm/software/acdsinst/20.1std/711/ib_installers/ModelSimSetup-20.1.0.711-linux.run
 
 ARG VERILATOR_INSTALL=/opt/verilator
 ARG SLANG_SERVER_INSTALL=/opt/slang-server
 ARG SURFER_INSTALL=/opt/surfer
 ARG RISCV_INSTALL=/opt/riscv
+ARG MODELSIM_INSTALL=/opt/modelsim
 
 # ---- Verilator Builder -------------------------------------------------------
 FROM ubuntu:24.04 AS verilator_builder
@@ -47,6 +50,43 @@ RUN git clone --branch ${VERILATOR_VERSION} --depth 1 https://github.com/verilat
     make -j"$(nproc)" && \
     make install && \
     rm -rf /tmp/verilator
+
+# ---- Modelsim Installer ------------------------------------------------------
+FROM ubuntu:24.04 AS modelsim_installer
+
+ARG MODELSIM_INSTALLER
+ARG MODELSIM_INSTALLER_URL
+ARG MODELSIM_INSTALL
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV MODELSIM_INSTALLER=${MODELSIM_INSTALLER}
+ENV MODELSIM_INSTALLER_URL=${MODELSIM_INSTALLER_URL}
+ENV MODELSIM_INSTALL=${MODELSIM_INSTALL}
+
+RUN dpkg --add-architecture i386 && \
+    echo "deb http://security.ubuntu.com/ubuntu focal-security main universe" > /etc/apt/sources.list.d/ubuntu-focal-sources.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    wget \
+    libc6:i386 \
+    libxtst6:i386 \
+    libncurses5:i386 \
+    libxft2:i386 \
+    libstdc++6:i386 \
+    libc6-dev-i386 \
+    lib32z1 \
+    libqt5xml5 \
+    liblzma-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN wget -O /tmp/${MODELSIM_INSTALLER} ${MODELSIM_INSTALLER_URL} && \
+    chmod +x /tmp/${MODELSIM_INSTALLER} && \
+    /tmp/${MODELSIM_INSTALLER} --mode unattended --accept_eula 1 \
+        --installdir ${MODELSIM_INSTALL} --unattendedmodeui none && \
+    chmod -R a+rX ${MODELSIM_INSTALL} && \
+    rm -f /tmp/${MODELSIM_INSTALLER}
 
 # ---- Slang-server Builder ----------------------------------------------------
 FROM ubuntu:24.04 AS slang_server_builder
@@ -143,6 +183,7 @@ ARG VERILATOR_INSTALL
 ARG SLANG_SERVER_INSTALL
 ARG SURFER_INSTALL
 ARG RISCV_INSTALL
+ARG MODELSIM_INSTALL
 ARG OPENCODE_VERSION
 ARG PRECOMMIT_VERSION
 ARG COMMITIZEN_VERSION
@@ -154,11 +195,14 @@ ENV VERILATOR_INSTALL=${VERILATOR_INSTALL}
 ENV SLANG_SERVER_INSTALL=${SLANG_SERVER_INSTALL}
 ENV SURFER_INSTALL=${SURFER_INSTALL}
 ENV RISCV_INSTALL=${RISCV_INSTALL}
+ENV MODELSIM_INSTALL=${MODELSIM_INSTALL}
 ENV RISCV_TOOLCHAIN_INSTALL=${RISCV_INSTALL}/xpack-riscv-none-elf-gcc-${RISCV_XPACK_VERSION}
 ENV ADD_LDFLAGS="-lc -lnosys -Wl,--defsym=end=_end"
 ENV WINIT_UNIX_BACKEND=x11
 
-RUN apt-get update && \
+RUN dpkg --add-architecture i386 && \
+    echo "deb http://security.ubuntu.com/ubuntu focal-security main universe" > /etc/apt/sources.list.d/ubuntu-focal-sources.list && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
@@ -176,6 +220,15 @@ RUN apt-get update && \
     openssh-client \
     bash-completion \
     libx11-xcb1 \
+    libc6:i386 \
+    libxtst6:i386 \
+    libncurses5:i386 \
+    libxft2:i386 \
+    libstdc++6:i386 \
+    libc6-dev-i386 \
+    lib32z1 \
+    libqt5xml5 \
+    liblzma-dev \
     libxkbcommon-x11-0 \
     libegl1 \
     libgl1 \
@@ -197,6 +250,7 @@ COPY --from=verilator_builder ${VERILATOR_INSTALL} ${VERILATOR_INSTALL}
 COPY --from=slang_server_builder ${SLANG_SERVER_INSTALL} ${SLANG_SERVER_INSTALL}
 COPY --from=surfer_builder ${SURFER_INSTALL} ${SURFER_INSTALL}
 COPY --from=riscv_toolchain_builder ${RISCV_INSTALL} ${RISCV_INSTALL}
+COPY --from=modelsim_installer ${MODELSIM_INSTALL} ${MODELSIM_INSTALL}
 
 RUN for src in ${RISCV_TOOLCHAIN_INSTALL}/bin/riscv-none-elf-*; do \
         dst="/usr/local/bin/$(basename "$src" | sed 's/^riscv-none-elf-/riscv64-unknown-elf-/')"; \
@@ -206,7 +260,7 @@ RUN for src in ${RISCV_TOOLCHAIN_INSTALL}/bin/riscv-none-elf-*; do \
 RUN if ! id -u ubuntu >/dev/null 2>&1; then useradd -m -s /bin/bash ubuntu; fi
 RUN mkdir -p /workspaces && chown ubuntu:ubuntu /workspaces && chmod 775 /workspaces
 
-ENV PATH="/home/ubuntu/.local/bin:${VERILATOR_INSTALL}/bin:${SLANG_SERVER_INSTALL}/bin:${SURFER_INSTALL}/bin:${RISCV_TOOLCHAIN_INSTALL}/bin:${PATH}"
+ENV PATH="/home/ubuntu/.local/bin:${MODELSIM_INSTALL}/modelsim_ase/bin:${VERILATOR_INSTALL}/bin:${SLANG_SERVER_INSTALL}/bin:${SURFER_INSTALL}/bin:${RISCV_TOOLCHAIN_INSTALL}/bin:${PATH}"
 
 USER ubuntu
 

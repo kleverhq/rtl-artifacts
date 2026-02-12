@@ -12,6 +12,7 @@ tools-check:
 	slang-server --version
 	riscv64-unknown-elf-gcc --version
 	riscv64-unknown-elf-objcopy --version
+	vsim -version
 	pre-commit --version
 	cz version
 
