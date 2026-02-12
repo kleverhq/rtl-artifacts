@@ -240,6 +240,7 @@ RUN dpkg --add-architecture i386 && \
     perl-doc \
     z3 \
     gtkwave \
+    iverilog \
     python3 \
     pipx && \
     locale-gen en_US.UTF-8 && \

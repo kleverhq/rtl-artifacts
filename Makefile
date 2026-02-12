@@ -18,6 +18,7 @@ tools-check:
 	riscv64-unknown-elf-gcc --version
 	riscv64-unknown-elf-objcopy --version
 	vsim -version
+	iverilog -V
 	pre-commit --version
 	cz version
 
