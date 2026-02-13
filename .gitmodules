@@ -6,7 +6,3 @@
 	path = third_party/scr1
 	url = https://github.com/syntacore/scr1.git
 	branch = master
-[submodule "third_party/axi"]
-	path = third_party/axi
-	url = https://github.com/pulp-platform/axi.git
-	branch = master
