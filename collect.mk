@@ -1,5 +1,6 @@
 ARTIFACTS_DIR ?= artifacts
 ARTIFACTS_SCR1_DIR ?= $(ARTIFACTS_DIR)/scr1
+ARTIFACTS_PICORV32_DIR ?= $(ARTIFACTS_DIR)/picorv32
 
 SCR1_DIR ?= third_party/scr1
 SCR1_COLLECT_CFG ?= MAX
@@ -9,12 +10,16 @@ SCR1_COLLECT_TARGETS ?= isr_sample riscv_arch riscv_compliance riscv_isa hello c
 SCR1_BENCH_TARGETS ?= coremark dhrystone21
 SCR1_BENCH_ADD_LDFLAGS ?= -Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group -Wl,--defsym=end=_end
 
+PICORV32_DIR ?= third_party/picorv32
+PICORV32_TOOLCHAIN_PREFIX ?= riscv64-unknown-elf-
+PICORV32_COLLECT_TARGETS ?= test_vcd test_wb_vcd test_ez_vcd
+
 .DEFAULT_GOAL := all
 
-.PHONY: all clean scr1
+.PHONY: all clean scr1 picorv32
 
 ## Collect all artifacts
-all: scr1
+all: scr1 picorv32
 
 ## Run SCR1 waveform collection matrix
 scr1:
@@ -34,7 +39,18 @@ scr1:
 		done; \
 	done
 
+## Run PicoRV32 waveform collection
+picorv32:
+	@set -eu; \
+	mkdir -p $(ARTIFACTS_PICORV32_DIR); \
+	for target in $(PICORV32_COLLECT_TARGETS); do \
+		echo "Collecting $$target"; \
+		$(MAKE) -C $(PICORV32_DIR) TOOLCHAIN_PREFIX="$(PICORV32_TOOLCHAIN_PREFIX)" $$target; \
+		vcd2fst "$(PICORV32_DIR)/testbench.vcd" "$(ARTIFACTS_PICORV32_DIR)/picorv32_$${target}.fst"; \
+	done
+
 ## Remove all build artifacts
 clean:
 	rm -rf $(ARTIFACTS_DIR)
 	$(MAKE) -C $(SCR1_DIR) clean
+	$(MAKE) -C $(PICORV32_DIR) clean
