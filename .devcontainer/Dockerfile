@@ -6,6 +6,7 @@ ARG RUST_VERSION=1.93.0
 ARG OPENCODE_VERSION=1.1.53
 ARG PRECOMMIT_VERSION=4.5.1
 ARG COMMITIZEN_VERSION=4.12.1
+ARG BENDER_VERSION=0.30.0
 ARG MODELSIM_INSTALLER=ModelSimSetup-20.1.0.711-linux.run
 ARG MODELSIM_INSTALLER_URL=https://downloads.intel.com/akdlm/software/acdsinst/20.1std/711/ib_installers/ModelSimSetup-20.1.0.711-linux.run
 
@@ -14,6 +15,7 @@ ARG SLANG_SERVER_INSTALL=/opt/slang-server
 ARG SURFER_INSTALL=/opt/surfer
 ARG RISCV_INSTALL=/opt/riscv
 ARG MODELSIM_INSTALL=/opt/modelsim
+ARG BENDER_INSTALL=/opt/bender
 
 # ---- Verilator Builder -------------------------------------------------------
 FROM ubuntu:24.04 AS verilator_builder
@@ -152,6 +154,39 @@ RUN ${CARGO_HOME}/bin/cargo install --locked \
     --root ${SURFER_INSTALL} \
     surfer
 
+# ---- Bender Builder ----------------------------------------------------------
+FROM ubuntu:24.04 AS bender_builder
+
+ARG BENDER_VERSION
+ARG BENDER_INSTALL
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV BENDER_VERSION=${BENDER_VERSION}
+ENV BENDER_INSTALL=${BENDER_INSTALL}
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    tar && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN arch="$(dpkg --print-architecture)" && \
+    case "${arch}" in \
+      amd64) bender_arch="x86_64-linux-gnu" ;; \
+      arm64) bender_arch="arm64-linux-gnu" ;; \
+      *) echo "Unsupported architecture: ${arch}" >&2; exit 1 ;; \
+    esac && \
+    bender_tarball="bender-${BENDER_VERSION}-${bender_arch}.tar.gz" && \
+    bender_url="https://github.com/pulp-platform/bender/releases/download/v${BENDER_VERSION}/${bender_tarball}" && \
+    curl -fsSL -o /tmp/bender.tar.gz "${bender_url}" && \
+    mkdir -p ${BENDER_INSTALL}/bin && \
+    tar -xzf /tmp/bender.tar.gz -C /tmp && \
+    install -m 0755 /tmp/bender ${BENDER_INSTALL}/bin/bender && \
+    ${BENDER_INSTALL}/bin/bender --version && \
+    rm -f /tmp/bender.tar.gz /tmp/bender
+
 # ---- RISC-V Toolchain Builder ------------------------------------------------
 FROM ubuntu:24.04 AS riscv_toolchain_builder
 
@@ -184,6 +219,7 @@ ARG SLANG_SERVER_INSTALL
 ARG SURFER_INSTALL
 ARG RISCV_INSTALL
 ARG MODELSIM_INSTALL
+ARG BENDER_INSTALL
 ARG OPENCODE_VERSION
 ARG PRECOMMIT_VERSION
 ARG COMMITIZEN_VERSION
@@ -196,6 +232,7 @@ ENV SLANG_SERVER_INSTALL=${SLANG_SERVER_INSTALL}
 ENV SURFER_INSTALL=${SURFER_INSTALL}
 ENV RISCV_INSTALL=${RISCV_INSTALL}
 ENV MODELSIM_INSTALL=${MODELSIM_INSTALL}
+ENV BENDER_INSTALL=${BENDER_INSTALL}
 ENV RISCV_TOOLCHAIN_INSTALL=${RISCV_INSTALL}/xpack-riscv-none-elf-gcc-${RISCV_XPACK_VERSION}
 ENV ADD_LDFLAGS="-lc -lnosys -Wl,--defsym=end=_end"
 ENV WINIT_UNIX_BACKEND=x11
@@ -252,6 +289,7 @@ COPY --from=slang_server_builder ${SLANG_SERVER_INSTALL} ${SLANG_SERVER_INSTALL}
 COPY --from=surfer_builder ${SURFER_INSTALL} ${SURFER_INSTALL}
 COPY --from=riscv_toolchain_builder ${RISCV_INSTALL} ${RISCV_INSTALL}
 COPY --from=modelsim_installer ${MODELSIM_INSTALL} ${MODELSIM_INSTALL}
+COPY --from=bender_builder ${BENDER_INSTALL} ${BENDER_INSTALL}
 
 RUN for src in ${RISCV_TOOLCHAIN_INSTALL}/bin/riscv-none-elf-*; do \
         dst="/usr/local/bin/$(basename "$src" | sed 's/^riscv-none-elf-/riscv64-unknown-elf-/')"; \
@@ -261,7 +299,7 @@ RUN for src in ${RISCV_TOOLCHAIN_INSTALL}/bin/riscv-none-elf-*; do \
 RUN if ! id -u ubuntu >/dev/null 2>&1; then useradd -m -s /bin/bash ubuntu; fi
 RUN mkdir -p /workspaces && chown ubuntu:ubuntu /workspaces && chmod 775 /workspaces
 
-ENV PATH="/home/ubuntu/.local/bin:${MODELSIM_INSTALL}/modelsim_ase/bin:${VERILATOR_INSTALL}/bin:${SLANG_SERVER_INSTALL}/bin:${SURFER_INSTALL}/bin:${RISCV_TOOLCHAIN_INSTALL}/bin:${PATH}"
+ENV PATH="/home/ubuntu/.local/bin:${BENDER_INSTALL}/bin:${MODELSIM_INSTALL}/modelsim_ase/bin:${VERILATOR_INSTALL}/bin:${SLANG_SERVER_INSTALL}/bin:${SURFER_INSTALL}/bin:${RISCV_TOOLCHAIN_INSTALL}/bin:${PATH}"
 
 USER ubuntu
 
