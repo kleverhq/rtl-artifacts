@@ -1,4 +1,6 @@
 ARTIFACTS_DIR ?= artifacts
+ARTIFACTS_SCR1_DIR ?= $(ARTIFACTS_DIR)/scr1
+
 SCR1_DIR ?= third_party/scr1
 SCR1_COLLECT_CFG ?= MAX
 SCR1_COLLECT_TRACE ?= 0
@@ -12,14 +14,12 @@ SCR1_BENCH_ADD_LDFLAGS ?= -Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group -W
 .PHONY: all clean scr1
 
 ## Collect all artifacts
-all: $(ARTIFACTS_DIR) scr1
-
-$(ARTIFACTS_DIR):
-	mkdir -p $(ARTIFACTS_DIR)
+all: scr1
 
 ## Run SCR1 waveform collection matrix
-scr1: $(ARTIFACTS_DIR)
+scr1:
 	@set -eu; \
+	mkdir -p $(ARTIFACTS_SCR1_DIR);
 	cfg_lc=$$(printf '%s' "$(SCR1_COLLECT_CFG)" | tr '[:upper:]' '[:lower:]'); \
 	for bus in $(SCR1_COLLECT_BUSES); do \
 		bus_lc=$$(printf '%s' "$$bus" | tr '[:upper:]' '[:lower:]'); \
@@ -30,7 +30,7 @@ scr1: $(ARTIFACTS_DIR)
 				*" $$target "*) $(MAKE) -C $(SCR1_DIR) run_verilator_wf CFG=$(SCR1_COLLECT_CFG) BUS=$$bus TARGETS="$$target" TRACE=$(SCR1_COLLECT_TRACE) ADD_LDFLAGS='$(SCR1_BENCH_ADD_LDFLAGS)' ;; \
 				*) $(MAKE) -C $(SCR1_DIR) run_verilator_wf CFG=$(SCR1_COLLECT_CFG) BUS=$$bus TARGETS="$$target" TRACE=$(SCR1_COLLECT_TRACE) ADD_LDFLAGS= ;; \
 			esac; \
-			cp "$$build_dir/simx.vcd" "$(ARTIFACTS_DIR)/scr1_$${cfg_lc}_$${bus_lc}_$${target}.vcd"; \
+			vcd2fst "$$build_dir/simx.vcd" "$(ARTIFACTS_SCR1_DIR)/scr1_$${cfg_lc}_$${bus_lc}_$${target}.fst"; \
 		done; \
 	done
 
