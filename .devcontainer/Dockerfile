@@ -6,11 +6,15 @@ ARG RUST_VERSION=1.93.0
 ARG OPENCODE_VERSION=1.1.53
 ARG PRECOMMIT_VERSION=4.5.1
 ARG COMMITIZEN_VERSION=4.12.1
+ARG MINIFORGE_VERSION=26.1.0-0
+ARG CHIPYARD_VERSION=1.13.0
 
 ARG VERILATOR_INSTALL=/opt/verilator
 ARG SLANG_SERVER_INSTALL=/opt/slang-server
 ARG SURFER_INSTALL=/opt/surfer
 ARG RISCV_INSTALL=/opt/riscv
+ARG CONDA_INSTALL=/opt/conda
+ARG CHIPYARD_INSTALL=/opt/chipyard
 
 # ---- Verilator Builder -------------------------------------------------------
 FROM ubuntu:24.04 AS verilator_builder
@@ -135,6 +139,41 @@ RUN curl -fsSL -o /tmp/riscv-toolchain.tar.gz \
     tar -xzf /tmp/riscv-toolchain.tar.gz -C ${RISCV_INSTALL} && \
     rm -f /tmp/riscv-toolchain.tar.gz
 
+# ---- Chipyard Builder --------------------------------------------------------
+FROM ubuntu:24.04 AS chipyard_builder
+
+ARG MINIFORGE_VERSION
+ARG CHIPYARD_VERSION
+ARG CONDA_INSTALL
+ARG CHIPYARD_INSTALL
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CONDA_INSTALL=${CONDA_INSTALL}
+ENV CHIPYARD_INSTALL=${CHIPYARD_INSTALL}
+ENV PATH=${CONDA_INSTALL}/bin:${PATH}
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    bzip2 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL -o /tmp/miniforge.sh \
+    "https://github.com/conda-forge/miniforge/releases/download/${MINIFORGE_VERSION}/Miniforge3-${MINIFORGE_VERSION}-Linux-x86_64.sh" && \
+    bash /tmp/miniforge.sh -b -p ${CONDA_INSTALL} && \
+    rm -f /tmp/miniforge.sh && \
+    conda install -n base -y conda-libmamba-solver && \
+    conda config --system --set solver libmamba && \
+    conda clean -afy
+
+RUN git clone --branch ${CHIPYARD_VERSION} --depth 1 https://github.com/ucb-bar/chipyard.git ${CHIPYARD_INSTALL} && \
+    cd ${CHIPYARD_INSTALL} && \
+    ./build-setup.sh riscv-tools --skip-ctags --skip-firesim --skip-marshal && \
+    conda clean -afy
+
 # ---- Main --------------------------------------------------------------------
 FROM ubuntu:24.04
 
@@ -143,6 +182,8 @@ ARG VERILATOR_INSTALL
 ARG SLANG_SERVER_INSTALL
 ARG SURFER_INSTALL
 ARG RISCV_INSTALL
+ARG CONDA_INSTALL
+ARG CHIPYARD_INSTALL
 ARG OPENCODE_VERSION
 ARG PRECOMMIT_VERSION
 ARG COMMITIZEN_VERSION
@@ -155,6 +196,9 @@ ENV SLANG_SERVER_INSTALL=${SLANG_SERVER_INSTALL}
 ENV SURFER_INSTALL=${SURFER_INSTALL}
 ENV RISCV_INSTALL=${RISCV_INSTALL}
 ENV RISCV_TOOLCHAIN_INSTALL=${RISCV_INSTALL}/xpack-riscv-none-elf-gcc-${RISCV_XPACK_VERSION}
+ENV CONDA_INSTALL=${CONDA_INSTALL}
+ENV CHIPYARD_INSTALL=${CHIPYARD_INSTALL}
+ENV CHIPYARD_DIR=${CHIPYARD_INSTALL}
 ENV ADD_LDFLAGS="-lc -lnosys -Wl,--defsym=end=_end"
 ENV WINIT_UNIX_BACKEND=x11
 
@@ -194,20 +238,22 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+RUN if ! id -u ubuntu >/dev/null 2>&1; then useradd -m -s /bin/bash ubuntu; fi
+RUN mkdir -p /workspaces && chown ubuntu:ubuntu /workspaces && chmod 775 /workspaces
+
 COPY --from=verilator_builder ${VERILATOR_INSTALL} ${VERILATOR_INSTALL}
 COPY --from=slang_server_builder ${SLANG_SERVER_INSTALL} ${SLANG_SERVER_INSTALL}
 COPY --from=surfer_builder ${SURFER_INSTALL} ${SURFER_INSTALL}
 COPY --from=riscv_toolchain_builder ${RISCV_INSTALL} ${RISCV_INSTALL}
+COPY --from=chipyard_builder --chown=ubuntu:ubuntu ${CONDA_INSTALL} ${CONDA_INSTALL}
+COPY --from=chipyard_builder --chown=ubuntu:ubuntu ${CHIPYARD_INSTALL} ${CHIPYARD_INSTALL}
 
 RUN for src in ${RISCV_TOOLCHAIN_INSTALL}/bin/riscv-none-elf-*; do \
         dst="/usr/local/bin/$(basename "$src" | sed 's/^riscv-none-elf-/riscv64-unknown-elf-/')"; \
         ln -sf "$src" "$dst"; \
     done
 
-RUN if ! id -u ubuntu >/dev/null 2>&1; then useradd -m -s /bin/bash ubuntu; fi
-RUN mkdir -p /workspaces && chown ubuntu:ubuntu /workspaces && chmod 775 /workspaces
-
-ENV PATH="/home/ubuntu/.local/bin:${VERILATOR_INSTALL}/bin:${SLANG_SERVER_INSTALL}/bin:${SURFER_INSTALL}/bin:${RISCV_TOOLCHAIN_INSTALL}/bin:${PATH}"
+ENV PATH="/home/ubuntu/.local/bin:${VERILATOR_INSTALL}/bin:${SLANG_SERVER_INSTALL}/bin:${SURFER_INSTALL}/bin:${RISCV_TOOLCHAIN_INSTALL}/bin:${PATH}:${CONDA_INSTALL}/bin"
 
 USER ubuntu
 
