@@ -32,5 +32,7 @@ Use `Makefile` targets as the primary interface:
 ## Container Policy
 
 - `.devcontainer/Dockerfile` defines a single image used both locally and in CI.
+- The devcontainer image includes a standalone Chipyard install at `/opt/chipyard`
+  (outside this repo and not as a submodule); use it as a toolchain dependency.
 - Keep tooling setup in one place; avoid parallel "dev" and "ci" variants.
 - The image should contain only tooling needed for artifact generation/inspection.
