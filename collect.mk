@@ -1,6 +1,7 @@
 ARTIFACTS_DIR ?= artifacts
 ARTIFACTS_SCR1_DIR ?= $(ARTIFACTS_DIR)/scr1
 ARTIFACTS_PICORV32_DIR ?= $(ARTIFACTS_DIR)/picorv32
+ARTIFACTS_CHIPYARD_DIR ?= $(ARTIFACTS_DIR)/chipyard
 
 SCR1_DIR ?= third_party/scr1
 SCR1_COLLECT_CFG ?= MAX
@@ -14,12 +15,18 @@ PICORV32_DIR ?= third_party/picorv32
 PICORV32_TOOLCHAIN_PREFIX ?= riscv64-unknown-elf-
 PICORV32_COLLECT_TARGETS ?= test_vcd test_wb_vcd test_ez_vcd
 
+CHIPYARD_DIR ?= /opt/chipyard
+CHIPYARD_SIM_DIR ?= $(CHIPYARD_DIR)/sims/verilator
+CHIPYARD_ENV_SH ?= $(CHIPYARD_DIR)/env.sh
+CHIPYARD_COLLECT_CONFIGS ?= DualRocketConfig ClusteredRocketConfig
+CHIPYARD_COLLECT_BINARIES ?= dhrystone.riscv towers.riscv qsort.riscv memcpy.riscv mt-memcpy.riscv mt-vvadd.riscv
+
 .DEFAULT_GOAL := all
 
-.PHONY: all clean scr1 picorv32
+.PHONY: all clean scr1 picorv32 chipyard
 
 ## Collect all artifacts
-all: scr1 picorv32
+all: scr1 picorv32 chipyard
 
 ## Run SCR1 waveform collection matrix
 scr1:
@@ -48,6 +55,21 @@ picorv32:
 		$(MAKE) -C $(PICORV32_DIR) TOOLCHAIN_PREFIX="$(PICORV32_TOOLCHAIN_PREFIX)" $$target; \
 		vcd2fst "$(PICORV32_DIR)/testbench.vcd" "$(ARTIFACTS_PICORV32_DIR)/picorv32_$${target}.fst"; \
 	done
+
+## Run Chipyard waveform collection matrix
+chipyard:
+	@bash -lc 'set -e; \
+	source "$(CHIPYARD_ENV_SH)"; \
+	set -u; \
+	mkdir -p "$(ARTIFACTS_CHIPYARD_DIR)"; \
+	for cfg in $(CHIPYARD_COLLECT_CONFIGS); do \
+		for test in $(CHIPYARD_COLLECT_BINARIES); do \
+			test_name=$${test%.riscv}; \
+			echo "Collecting $$cfg/$$test_name"; \
+			$(MAKE) -C "$(CHIPYARD_SIM_DIR)" CONFIG="$$cfg" run-binary-debug USE_FST=1 BINARY="$$RISCV/riscv64-unknown-elf/share/riscv-tests/benchmarks/$$test"; \
+			cp "$(CHIPYARD_SIM_DIR)/output/chipyard.harness.TestHarness.$$cfg/$$test_name.fst" "$(ARTIFACTS_CHIPYARD_DIR)/chipyard_$${cfg}_$${test_name}.fst"; \
+		done; \
+	done'
 
 ## Remove all build artifacts
 clean:
