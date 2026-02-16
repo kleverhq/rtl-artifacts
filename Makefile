@@ -6,7 +6,7 @@ include scr1.mk
 include picorv32.mk
 include chipyard.mk
 
-.PHONY: bootstrap tools-check sources-check pre-commit check-commit collect clean help
+.PHONY: bootstrap tools-check sources-check pre-commit check-commit collect release clean help
 
 .NOTPARALLEL: collect scr1 picorv32 chipyard
 
@@ -45,6 +45,11 @@ check-commit:
 
 ## Collect all artifacts
 collect: scr1 picorv32 chipyard
+
+## Create GitHub release with artifacts (set VERSION=vX.Y.Z)
+release:
+	@[ -n "$(VERSION)" ] || { echo "Usage: make release VERSION=vX.Y.Z"; exit 1; }
+	./scripts/release.sh "$(VERSION)"
 
 ## Clean up
 clean:

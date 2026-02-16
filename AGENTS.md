@@ -19,6 +19,14 @@ Use `Makefile` targets as the primary interface:
 - `make sources-check` - verify external source trees are present and writable.
 - `make pre-commit` - run hooks on all files.
 - `make check-commit` - validate the current commit message.
+- `make release VERSION=vX.Y.Z` - create a GitHub release and upload all files
+  from `artifacts/` as individual assets.
+
+## Release Workflow (Agent-Owned)
+
+- Use `make release VERSION=<version>` from the repository root.
+- The release flow must stay incremental: rely on `make collect` target validity;
+  do not force `clean` in the release path.
 
 ## External Source Policy
 

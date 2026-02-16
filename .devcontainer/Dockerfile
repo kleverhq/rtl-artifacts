@@ -288,6 +288,8 @@ RUN apt-get update && \
 
 RUN if ! id -u ubuntu >/dev/null 2>&1; then useradd -m -s /bin/bash ubuntu; fi
 RUN mkdir -p /workspaces && chown ubuntu:ubuntu /workspaces && chmod 775 /workspaces
+RUN mkdir -p /home/ubuntu/.config /home/ubuntu/.local/share /home/ubuntu/.cache && \
+    chown -R ubuntu:ubuntu /home/ubuntu/.config /home/ubuntu/.local /home/ubuntu/.cache
 
 COPY --from=verilator_builder ${VERILATOR_INSTALL} ${VERILATOR_INSTALL}
 COPY --from=slang_server_builder ${SLANG_SERVER_INSTALL} ${SLANG_SERVER_INSTALL}
