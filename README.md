@@ -59,6 +59,13 @@ make bootstrap
 make collect
 ```
 
+Each generated `.fst` is also a valid Make target, so you can build exactly one
+artifact and skip everything already collected:
+
+```bash
+make artifacts/scr1_max_axi_hello.fst
+```
+
 ## Other commands
 
 ```bash

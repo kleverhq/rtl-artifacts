@@ -1,9 +1,15 @@
 .DEFAULT_GOAL := help
 
-HELP_MAKEFILES ?= Makefile
+HELP_MAKEFILES ?= Makefile scr1.mk picorv32.mk chipyard.mk
+
+include scr1.mk
+include picorv32.mk
+include chipyard.mk
 
 .PHONY: bootstrap tools-check submodules-sync submodules-init submodules-update \
 	submodules-status pre-commit check-commit collect clean help
+
+.NOTPARALLEL: collect scr1 picorv32 chipyard
 
 ## Bootstrap workspace (tools + hooks + submodules)
 bootstrap: submodules-init tools-check
@@ -46,12 +52,13 @@ check-commit:
 	cz check --commit-msg-file "$$(git rev-parse --git-path COMMIT_EDITMSG)"
 
 ## Collect all artifacts
-collect:
-	$(MAKE) -f collect.mk all
+collect: scr1 picorv32 chipyard
 
 ## Clean up
 clean:
-	$(MAKE) -f collect.mk clean
+	rm -rf $(ARTIFACTS_DIR)
+	$(MAKE) -C $(SCR1_DIR) clean
+	$(MAKE) -C $(PICORV32_DIR) clean
 
 ## Show targets
 help:
