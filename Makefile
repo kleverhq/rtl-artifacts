@@ -6,13 +6,12 @@ include scr1.mk
 include picorv32.mk
 include chipyard.mk
 
-.PHONY: bootstrap tools-check submodules-sync submodules-init submodules-update \
-	submodules-status pre-commit check-commit collect clean help
+.PHONY: bootstrap tools-check sources-check pre-commit check-commit collect clean help
 
 .NOTPARALLEL: collect scr1 picorv32 chipyard
 
-## Bootstrap workspace (tools + hooks + submodules)
-bootstrap: submodules-init tools-check
+## Bootstrap workspace (tools + hooks + external source checks)
+bootstrap: sources-check tools-check
 	pre-commit install --hook-type pre-commit --hook-type commit-msg
 
 ## Print versions of required tools
@@ -27,21 +26,14 @@ tools-check:
 	pre-commit --version
 	cz version
 
-## Sync submodule URLs with .gitmodules
-submodules-sync:
-	git submodule sync --recursive
-
-## Init and update all submodules recursively
-submodules-init: submodules-sync
-	git submodule update --init --recursive
-
-## Pull latest configured submodule branches
-submodules-update: submodules-sync
-	git submodule update --remote --recursive
-
-## Show current submodule commits
-submodules-status:
-	git submodule status --recursive
+## Verify external RTL source trees from image
+sources-check:
+	@[ -d "$(SCR1_DIR)" ] || { echo "Missing SCR1 sources at $(SCR1_DIR)"; exit 1; }
+	@[ -d "$(PICORV32_DIR)" ] || { echo "Missing PicoRV32 sources at $(PICORV32_DIR)"; exit 1; }
+	@[ -f "$(CHIPYARD_ENV_SH)" ] || { echo "Missing Chipyard env.sh at $(CHIPYARD_ENV_SH)"; exit 1; }
+	@[ -w "$(SCR1_DIR)" ] || { echo "SCR1 sources are not writable: $(SCR1_DIR)"; exit 1; }
+	@[ -w "$(PICORV32_DIR)" ] || { echo "PicoRV32 sources are not writable: $(PICORV32_DIR)"; exit 1; }
+	@[ -w "$(CHIPYARD_DIR)" ] || { echo "Chipyard sources are not writable: $(CHIPYARD_DIR)"; exit 1; }
 
 ## Run pre-commit hooks on all files
 pre-commit:

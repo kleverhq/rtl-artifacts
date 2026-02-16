@@ -1,8 +1,0 @@
-[submodule "third_party/picorv32"]
-	path = third_party/picorv32
-	url = https://github.com/YosysHQ/picorv32.git
-	branch = main
-[submodule "third_party/scr1"]
-	path = third_party/scr1
-	url = https://github.com/syntacore/scr1.git
-	branch = master

@@ -6,9 +6,9 @@ development and CI.
 ## Why this layout exists
 
 - `.devcontainer/Dockerfile` uses dedicated builder stages for heavy tools
-  (`verilator`, `slang-server`, `surfer`, RISC-V toolchain) and one final runtime
-  image. This keeps rebuild caching effective without maintaining separate
-  `dev`/`ci` runtime targets.
+  (`verilator`, `slang-server`, `surfer`, RISC-V toolchain), upstream RTL
+  source trees, and one final runtime image. This keeps rebuild caching
+  effective without maintaining separate `dev`/`ci` runtime targets.
 - `.devcontainer/devcontainer.json` points to that same image so local sessions
   and automation converge on one environment definition.
 
@@ -20,7 +20,7 @@ development and CI.
   `initializeCommand` to survive container recreation.
 - Host networking is enabled because bridge networking often breaks in
   VPN-heavy setups.
-- `postStartCommand: make bootstrap` re-converges hooks and submodules on each
-  start instead of relying on one-time setup.
+- `postStartCommand: make bootstrap` re-converges hooks and source checks on
+  each start instead of relying on one-time setup.
 - `safe.directory` is configured in `postCreateCommand` to avoid Git ownership
   warnings when host UID/GID mappings differ.

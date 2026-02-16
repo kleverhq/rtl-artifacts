@@ -1,7 +1,7 @@
 ARTIFACTS_DIR ?= artifacts
 ARTIFACTS_PICORV32_DIR ?= $(ARTIFACTS_DIR)
 
-PICORV32_DIR ?= third_party/picorv32
+PICORV32_DIR ?= /opt/picorv32
 PICORV32_TOOLCHAIN_PREFIX ?= riscv64-unknown-elf-
 
 PICORV32_FSTS := \

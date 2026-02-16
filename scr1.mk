@@ -1,7 +1,7 @@
 ARTIFACTS_DIR ?= artifacts
 ARTIFACTS_SCR1_DIR ?= $(ARTIFACTS_DIR)
 
-SCR1_DIR ?= third_party/scr1
+SCR1_DIR ?= /opt/scr1
 SCR1_COLLECT_TRACE ?= 0
 SCR1_BENCH_ADD_LDFLAGS ?= -Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group -Wl,--defsym=end=_end
 

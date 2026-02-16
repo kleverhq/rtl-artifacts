@@ -8,8 +8,8 @@ The goal is to keep heavy HDL toolchains out of application repositories
 
 ## Included RTL components
 
-- SCR1: `third_party/scr1`
-- PicoRV32: `third_party/picorv32`
+- SCR1: preinstalled in the Docker image at `/opt/scr1`
+- PicoRV32: preinstalled in the Docker image at `/opt/picorv32`
 - Chipyard: preinstalled in the Docker image at `/opt/chipyard`
 
 ## Current artifact scope
@@ -28,7 +28,7 @@ runs in `.fst` format (Verilator-based collection flow).
 Clone the repository first:
 
 ```bash
-git clone --recurse-submodules <repo-url>
+git clone <repo-url>
 cd rtl-artifacts
 ```
 
@@ -47,7 +47,8 @@ docker run --rm -it --network host \
   rtl-artifacts:dev bash
 ```
 
-Then run bootstrap inside the container:
+Then run bootstrap inside the container (installs hooks, checks tools, and
+verifies external RTL source trees):
 
 ```bash
 make bootstrap

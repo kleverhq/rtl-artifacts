@@ -14,25 +14,23 @@ in one place.
 
 Use `Makefile` targets as the primary interface:
 
-- `make bootstrap` - initialize submodules, verify tools, install git hooks.
+- `make bootstrap` - verify external sources, verify tools, install git hooks.
 - `make tools-check` - print versions of required tooling.
-- `make submodules-init` - init/sync all submodules recursively.
-- `make submodules-update` - update submodules to configured upstream branches.
-- `make submodules-status` - show pinned submodule commits.
+- `make sources-check` - verify external source trees are present and writable.
 - `make pre-commit` - run hooks on all files.
 - `make check-commit` - validate the current commit message.
 
-## Submodule Policy
+## External Source Policy
 
-- Upstream RTL projects are tracked via git submodules under `third_party/`.
-- Avoid editing files inside submodules directly; bump submodule commits instead.
-- Keep `.gitmodules` URLs explicit and reproducible.
-- When changing submodule refs, include upstream commit intent in commit message.
+- Upstream RTL projects are installed by `.devcontainer/Dockerfile` under `/opt`.
+- Keep upstream revisions pinned explicitly in Docker build arguments.
+- Avoid editing files inside `/opt` trees directly; bump pinned upstream revisions instead.
+- When changing pinned revisions, include upstream commit intent in commit message.
 
 ## Container Policy
 
 - `.devcontainer/Dockerfile` defines a single image used both locally and in CI.
-- The devcontainer image includes a standalone Chipyard install at `/opt/chipyard`
-  (outside this repo and not as a submodule); use it as a toolchain dependency.
+- The devcontainer image includes standalone installs for SCR1, PicoRV32, and
+  Chipyard under `/opt`.
 - Keep tooling setup in one place; avoid parallel "dev" and "ci" variants.
 - The image should contain only tooling needed for artifact generation/inspection.
