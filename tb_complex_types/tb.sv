@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-module tb;
+module tb_complex_types;
 
   timeunit 1ns;
   timeprecision 1ps;
@@ -172,9 +172,9 @@ module tb;
   class packet_c;
     int         id;
     logic [7:0] data;
-    function new(int id = 0, logic [7:0] data = '0);
-      this.id   = id;
-      this.data = data;
+    function new(int id_i = 0, logic [7:0] data_i = '0);
+      this.id   = id_i;
+      this.data = data_i;
     endfunction
   endclass
 
@@ -379,11 +379,11 @@ module tb;
     str1 = "";
     state1 = ST_IDLE;
     packed_s1 = '0;
-    unpacked_s1 = '{default:'0};
-    packed_u1 = '{default:'0};
+    unpacked_s1 = '{x:'0, y:'0, z:ST_IDLE};
+    packed_u1 = '0;
     tagged1 = '0;
     nested_packed_s1 = '0;
-    nested_unpacked_s1 = '{default:'0};
+    nested_unpacked_s1 = '{state:ST_IDLE, inner:'{id:'0, value:'0}, count:'0};
     packed_arr1 = '0;
     packed_3d1 = '0;
 
@@ -391,7 +391,7 @@ module tb;
     foreach (unpacked_2d1[i,j]) unpacked_2d1[i][j] = '0;
     foreach (packed_s_arr1[i]) packed_s_arr1[i] = '0;
 
-    swa1 = '{default:'0};
+    swa1 = '{data:'{'0, '0}, id:'0};
 
     dyn_arr1 = new[0];
     queue1 = {};

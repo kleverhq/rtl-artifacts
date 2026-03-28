@@ -26,7 +26,7 @@
 SHELL := /bin/bash
 
 TB  := tb.sv
-TOP := tb
+TOP := tb_complex_types
 
 QUESTA_VLOG   ?= vlog
 QUESTA_VSIM   ?= vsim
@@ -183,7 +183,7 @@ xcelium-fsdb: run-xcelium-fsdb
 	LD_LIBRARY_PATH="$(NOVAS_HOME)/share/PLI/IUS/LINUX64:$$LD_LIBRARY_PATH" \
 	$(XCELIUM_XRUN) $(XCELIUM_FLAGS) $(TB) -top $(TOP) \
 	  -loadpli1 "$(NOVAS_HOME)/share/PLI/IUS/LINUX64/boot/novas_fli_boot:novas_fli_boot" \
-	  -input waves.tclVERILATOR_FLAGS
+	  -input waves.tcl
 
 # -----------------------------------------------------------------------------
 # Verilator (not tested yet)
