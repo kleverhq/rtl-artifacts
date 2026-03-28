@@ -1,17 +1,22 @@
 # Multi-simulator / multi-format Makefile for tb.sv
 #
 # Naming:
+#   make questa
 #   make questa-wlf
 #   make questa-vcd
 #   make questa-fsdb
+#   make vcs
 #   make vcs-vpd
 #   make vcs-vcd
 #   make vcs-fsdb
+#   make xcelium
 #   make xcelium-shm
 #   make xcelium-vcd
 #   make xcelium-fsdb
+#   make verilator
 #   make verilator-vcd
 #   make verilator-fst
+#   make icarus
 #   make icarus-vcd
 #   make icarus-fst
 #   make clean
@@ -59,19 +64,26 @@ RUN_DIRS := \
   run-verilator-vcd run-verilator-fst \
   run-icarus-vcd run-icarus-fst
 
+QUESTA_TARGETS    := questa-wlf questa-vcd questa-fsdb
+VCS_TARGETS       := vcs-vpd vcs-vcd vcs-fsdb
+XCELIUM_TARGETS   := xcelium-shm xcelium-vcd xcelium-fsdb
+VERILATOR_TARGETS := verilator-vcd verilator-fst
+ICARUS_TARGETS    := icarus-vcd icarus-fst
+
 .PHONY: all clean \
-        questa-wlf questa-vcd questa-fsdb \
-        vcs-vpd vcs-vcd vcs-fsdb \
-        xcelium-shm xcelium-vcd xcelium-fsdb \
-        verilator-vcd verilator-fst \
-        icarus-vcd icarus-fst
+        questa vcs xcelium verilator icarus \
+        $(QUESTA_TARGETS) \
+        $(VCS_TARGETS) \
+        $(XCELIUM_TARGETS) \
+        $(VERILATOR_TARGETS) \
+        $(ICARUS_TARGETS)
 
 all: \
-  questa-wlf questa-vcd questa-fsdb \
-  vcs-vpd vcs-vcd vcs-fsdb \
-  xcelium-shm xcelium-vcd xcelium-fsdb \
-  verilator-vcd verilator-fst \
-  icarus-vcd icarus-fst
+  $(QUESTA_TARGETS) \
+  $(VCS_TARGETS) \
+  $(XCELIUM_TARGETS) \
+  $(VERILATOR_TARGETS) \
+  $(ICARUS_TARGETS)
 
 $(RUN_DIRS):
 	mkdir -p $@
@@ -83,6 +95,8 @@ endef
 # -----------------------------------------------------------------------------
 # Questa (not tested yet)
 # -----------------------------------------------------------------------------
+
+questa: $(QUESTA_TARGETS)
 
 questa-wlf: run-questa-wlf
 	$(call copy_tb,run-questa-wlf)
@@ -119,6 +133,8 @@ questa-fsdb: run-questa-fsdb
 # VCS (not tested yet)
 # -----------------------------------------------------------------------------
 
+vcs: $(VCS_TARGETS)
+
 vcs-vpd: run-vcs-vpd
 	$(call copy_tb,run-vcs-vpd)
 	cd run-vcs-vpd && \
@@ -147,6 +163,8 @@ vcs-fsdb: run-vcs-fsdb
 # -----------------------------------------------------------------------------
 # Xcelium (not tested yet)
 # -----------------------------------------------------------------------------
+
+xcelium: $(XCELIUM_TARGETS)
 
 xcelium-shm: run-xcelium-shm
 	$(call copy_tb,run-xcelium-shm)
@@ -189,6 +207,8 @@ xcelium-fsdb: run-xcelium-fsdb
 # Verilator (not tested yet)
 # -----------------------------------------------------------------------------
 
+verilator: $(VERILATOR_TARGETS)
+
 verilator-vcd: run-verilator-vcd
 	$(call copy_tb,run-verilator-vcd)
 	cd run-verilator-vcd && \
@@ -206,6 +226,8 @@ verilator-fst: run-verilator-fst
 # -----------------------------------------------------------------------------
 # Icarus (not tested yet)
 # -----------------------------------------------------------------------------
+
+icarus: $(ICARUS_TARGETS)
 
 icarus-vcd: run-icarus-vcd
 	$(call copy_tb,run-icarus-vcd)

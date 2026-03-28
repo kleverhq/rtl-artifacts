@@ -47,9 +47,13 @@ simulators and dump formats, which is the main point of the fixture.
 
 Run commands from `tb_complex_types/`.
 
+There are also umbrella targets per simulator that build every dump format that
+simulator supports.
+
 Questa:
 
 ```sh
+make questa
 make questa-wlf
 make questa-vcd
 make questa-fsdb
@@ -58,6 +62,7 @@ make questa-fsdb
 VCS:
 
 ```sh
+make vcs
 make vcs-vpd
 make vcs-vcd
 make vcs-fsdb
@@ -66,6 +71,7 @@ make vcs-fsdb
 Xcelium:
 
 ```sh
+make xcelium
 make xcelium-shm
 make xcelium-vcd
 make xcelium-fsdb
@@ -74,6 +80,7 @@ make xcelium-fsdb
 Verilator:
 
 ```sh
+make verilator
 make verilator-vcd
 make verilator-fst
 ```
@@ -81,6 +88,7 @@ make verilator-fst
 Icarus:
 
 ```sh
+make icarus
 make icarus-vcd
 make icarus-fst
 ```
