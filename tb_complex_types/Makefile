@@ -32,6 +32,7 @@ SHELL := /bin/bash
 
 TB  := tb.sv
 TOP := tb_complex_types
+TB_SRC := $(abspath $(CURDIR)/$(TB))
 
 QUESTA_VLOG   ?= vlog
 QUESTA_VSIM   ?= vsim
@@ -88,10 +89,6 @@ all: \
 $(RUN_DIRS):
 	mkdir -p $@
 
-define copy_tb
-	cp $(TB) $1/
-endef
-
 # -----------------------------------------------------------------------------
 # Questa (not tested yet)
 # -----------------------------------------------------------------------------
@@ -99,14 +96,12 @@ endef
 questa: $(QUESTA_TARGETS)
 
 questa-wlf: run-questa-wlf
-	$(call copy_tb,run-questa-wlf)
 	cd run-questa-wlf && \
-	$(QUESTA_VLOG) $(QUESTA_VLOG_FLAGS) $(TB)
+	$(QUESTA_VLOG) $(QUESTA_VLOG_FLAGS) "$(TB_SRC)"
 	cd run-questa-wlf && \
 	$(QUESTA_VSIM) $(QUESTA_VSIM_FLAGS) -wlf waves.wlf $(TOP) -do "run -all; quit -f"
 
 questa-vcd: run-questa-vcd
-	$(call copy_tb,run-questa-vcd)
 	printf '%s\n' \
 'vcd file waves.vcd' \
 'vcd add -r /*' \
@@ -114,15 +109,14 @@ questa-vcd: run-questa-vcd
 'quit -f' \
 	> run-questa-vcd/run.do
 	cd run-questa-vcd && \
-	$(QUESTA_VLOG) $(QUESTA_VLOG_FLAGS) $(TB)
+	$(QUESTA_VLOG) $(QUESTA_VLOG_FLAGS) "$(TB_SRC)"
 	cd run-questa-vcd && \
 	$(QUESTA_VSIM) $(QUESTA_VSIM_FLAGS) $(TOP) -do run.do
 
 questa-fsdb: run-questa-fsdb
-	$(call copy_tb,run-questa-fsdb)
 	@test -n "$(NOVAS_HOME)" || (echo "NOVAS_HOME is required for questa-fsdb"; exit 1)
 	cd run-questa-fsdb && \
-	$(QUESTA_VLOG) $(QUESTA_VLOG_FLAGS) +define+WAVES_FSDB $(TB)
+	$(QUESTA_VLOG) $(QUESTA_VLOG_FLAGS) +define+WAVES_FSDB "$(TB_SRC)"
 	cd run-questa-fsdb && \
 	LD_LIBRARY_PATH="$(NOVAS_HOME)/share/PLI/ModelSim/$(shell uname -m):$$LD_LIBRARY_PATH" \
 	$(QUESTA_VSIM) $(QUESTA_VSIM_FLAGS) \
@@ -136,27 +130,24 @@ questa-fsdb: run-questa-fsdb
 vcs: $(VCS_TARGETS)
 
 vcs-vpd: run-vcs-vpd
-	$(call copy_tb,run-vcs-vpd)
 	cd run-vcs-vpd && \
-	$(VCS_BIN) $(VCS_FLAGS) +define+WAVES_VPD $(TB) -o simv
+	$(VCS_BIN) $(VCS_FLAGS) +define+WAVES_VPD "$(TB_SRC)" -o simv
 	cd run-vcs-vpd && \
 	./simv
 
 vcs-vcd: run-vcs-vcd
-	$(call copy_tb,run-vcs-vcd)
 	cd run-vcs-vcd && \
-	$(VCS_BIN) $(VCS_FLAGS) +define+WAVES_VCD $(TB) -o simv
+	$(VCS_BIN) $(VCS_FLAGS) +define+WAVES_VCD "$(TB_SRC)" -o simv
 	cd run-vcs-vcd && \
 	./simv
 
 vcs-fsdb: run-vcs-fsdb
-	$(call copy_tb,run-vcs-fsdb)
 	@test -n "$(NOVAS_HOME)" || (echo "NOVAS_HOME is required for vcs-fsdb"; exit 1)
 	cd run-vcs-fsdb && \
 	$(VCS_BIN) $(VCS_FLAGS) +define+WAVES_FSDB \
 	  -P "$(NOVAS_HOME)/share/PLI/VCS/LINUX64/novas.tab" \
 	     "$(NOVAS_HOME)/share/PLI/VCS/LINUX64/pli.a" \
-	  $(TB) -o simv
+	  "$(TB_SRC)" -o simv
 	cd run-vcs-fsdb && \
 	./simv
 
@@ -167,7 +158,6 @@ vcs-fsdb: run-vcs-fsdb
 xcelium: $(XCELIUM_TARGETS)
 
 xcelium-shm: run-xcelium-shm
-	$(call copy_tb,run-xcelium-shm)
 	printf '%s\n' \
 'database -open -shm -into waves.shm waves -default' \
 'probe -create -database waves -depth all [scope -tops]' \
@@ -175,10 +165,9 @@ xcelium-shm: run-xcelium-shm
 'exit' \
 	> run-xcelium-shm/waves.tcl
 	cd run-xcelium-shm && \
-	$(XCELIUM_XRUN) $(XCELIUM_FLAGS) $(TB) -top $(TOP) -input waves.tcl
+	$(XCELIUM_XRUN) $(XCELIUM_FLAGS) "$(TB_SRC)" -top $(TOP) -input waves.tcl
 
 xcelium-vcd: run-xcelium-vcd
-	$(call copy_tb,run-xcelium-vcd)
 	printf '%s\n' \
 'database -open -vcd -into waves.vcd waves -default' \
 'probe -create -database waves -depth all [scope -tops]' \
@@ -186,10 +175,9 @@ xcelium-vcd: run-xcelium-vcd
 'exit' \
 	> run-xcelium-vcd/waves.tcl
 	cd run-xcelium-vcd && \
-	$(XCELIUM_XRUN) $(XCELIUM_FLAGS) $(TB) -top $(TOP) -input waves.tcl
+	$(XCELIUM_XRUN) $(XCELIUM_FLAGS) "$(TB_SRC)" -top $(TOP) -input waves.tcl
 
 xcelium-fsdb: run-xcelium-fsdb
-	$(call copy_tb,run-xcelium-fsdb)
 	@test -n "$(NOVAS_HOME)" || (echo "NOVAS_HOME is required for xcelium-fsdb"; exit 1)
 	printf '%s\n' \
 'call fsdbDumpfile("waves.fsdb")' \
@@ -199,7 +187,7 @@ xcelium-fsdb: run-xcelium-fsdb
 	> run-xcelium-fsdb/waves.tcl
 	cd run-xcelium-fsdb && \
 	LD_LIBRARY_PATH="$(NOVAS_HOME)/share/PLI/IUS/LINUX64:$$LD_LIBRARY_PATH" \
-	$(XCELIUM_XRUN) $(XCELIUM_FLAGS) $(TB) -top $(TOP) \
+	$(XCELIUM_XRUN) $(XCELIUM_FLAGS) "$(TB_SRC)" -top $(TOP) \
 	  -loadpli1 "$(NOVAS_HOME)/share/PLI/IUS/LINUX64/boot/novas_fli_boot:novas_fli_boot" \
 	  -input waves.tcl
 
@@ -210,16 +198,14 @@ xcelium-fsdb: run-xcelium-fsdb
 verilator: $(VERILATOR_TARGETS)
 
 verilator-vcd: run-verilator-vcd
-	$(call copy_tb,run-verilator-vcd)
 	cd run-verilator-vcd && \
-	$(VERILATOR_BIN) $(VERILATOR_FLAGS) --trace-vcd +define+WAVES_VCD $(TB) --top-module $(TOP)
+	$(VERILATOR_BIN) $(VERILATOR_FLAGS) --trace-vcd +define+WAVES_VCD "$(TB_SRC)" --top-module $(TOP)
 	cd run-verilator-vcd && \
 	./obj_dir/V$(TOP)
 
 verilator-fst: run-verilator-fst
-	$(call copy_tb,run-verilator-fst)
 	cd run-verilator-fst && \
-	$(VERILATOR_BIN) $(VERILATOR_FLAGS) --trace-fst +define+WAVES_FST $(TB) --top-module $(TOP)
+	$(VERILATOR_BIN) $(VERILATOR_FLAGS) --trace-fst +define+WAVES_FST "$(TB_SRC)" --top-module $(TOP)
 	cd run-verilator-fst && \
 	./obj_dir/V$(TOP)
 
@@ -230,16 +216,14 @@ verilator-fst: run-verilator-fst
 icarus: $(ICARUS_TARGETS)
 
 icarus-vcd: run-icarus-vcd
-	$(call copy_tb,run-icarus-vcd)
 	cd run-icarus-vcd && \
-	$(IVERILOG_BIN) $(IVERILOG_FLAGS) -DICARUS -DWAVES_VCD -o simv $(TB)
+	$(IVERILOG_BIN) $(IVERILOG_FLAGS) -DICARUS -DWAVES_VCD -o simv "$(TB_SRC)"
 	cd run-icarus-vcd && \
 	$(VVP_BIN) simv
 
 icarus-fst: run-icarus-fst
-	$(call copy_tb,run-icarus-fst)
 	cd run-icarus-fst && \
-	$(IVERILOG_BIN) $(IVERILOG_FLAGS) -DICARUS -DWAVES_FST -o simv $(TB)
+	$(IVERILOG_BIN) $(IVERILOG_FLAGS) -DICARUS -DWAVES_FST -o simv "$(TB_SRC)"
 	cd run-icarus-fst && \
 	$(VVP_BIN) simv -fst
 
