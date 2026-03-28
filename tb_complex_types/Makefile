@@ -232,16 +232,16 @@ icarus: $(ICARUS_TARGETS)
 icarus-vcd: run-icarus-vcd
 	$(call copy_tb,run-icarus-vcd)
 	cd run-icarus-vcd && \
-	$(IVERILOG_BIN) $(IVERILOG_FLAGS) +define+WAVES_VCD -o simv $(TB)
+	$(IVERILOG_BIN) $(IVERILOG_FLAGS) -DICARUS -DWAVES_VCD -o simv $(TB)
 	cd run-icarus-vcd && \
 	$(VVP_BIN) simv
 
 icarus-fst: run-icarus-fst
 	$(call copy_tb,run-icarus-fst)
 	cd run-icarus-fst && \
-	$(IVERILOG_BIN) $(IVERILOG_FLAGS) +define+WAVES_FST -o simv $(TB)
+	$(IVERILOG_BIN) $(IVERILOG_FLAGS) -DICARUS -DWAVES_FST -o simv $(TB)
 	cd run-icarus-fst && \
-	$(VVP_BIN) -fst simv
+	$(VVP_BIN) simv -fst
 
 clean:
 	rm -rf $(RUN_DIRS)

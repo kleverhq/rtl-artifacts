@@ -67,6 +67,7 @@ module tb_complex_types;
   // Unpacked struct
   //--------------------------------------------------------------------------
 
+`ifndef ICARUS
   typedef struct {
     byte        x;
     logic [3:0] y;
@@ -74,6 +75,7 @@ module tb_complex_types;
   } unpacked_s_t;
 
   unpacked_s_t unpacked_s1;
+`endif
 
   //--------------------------------------------------------------------------
   // Packed union
@@ -117,6 +119,7 @@ module tb_complex_types;
 
   outer_packed_s_t nested_packed_s1;
 
+`ifndef ICARUS
   typedef struct {
     byte        id;
     logic [7:0] value;
@@ -129,6 +132,7 @@ module tb_complex_types;
   } outer_unpacked_s_t;
 
   outer_unpacked_s_t nested_unpacked_s1;
+`endif
 
   //--------------------------------------------------------------------------
   // Packed arrays
@@ -148,18 +152,22 @@ module tb_complex_types;
   // Array of structs
   //--------------------------------------------------------------------------
 
+`ifndef ICARUS
   packed_s_t packed_s_arr1 [0:2];
+`endif
 
   //--------------------------------------------------------------------------
   // Struct with unpacked array field
   //--------------------------------------------------------------------------
 
+`ifndef ICARUS
   typedef struct {
     logic [7:0] data [0:1];
     int         id;
   } struct_with_unpacked_arr_t;
 
   struct_with_unpacked_arr_t swa1;
+`endif
 
   //--------------------------------------------------------------------------
   // More edge-case / usually problematic types for dumping
@@ -167,7 +175,9 @@ module tb_complex_types;
 
   int dyn_arr1[];
   int queue1[$];
+`ifndef ICARUS
   int assoc1[string];
+`endif
 
   class packet_c;
     int         id;
@@ -255,9 +265,11 @@ module tb_complex_types;
       packed_s1.c = step[0];
 
       // Unpacked struct
+`ifndef ICARUS
       unpacked_s1.x = byte'(8'h80 + step);
       unpacked_s1.y = 4'hF - step[3:0];
       unpacked_s1.z = state1;
+`endif
 
       // Packed union
       case (step)
@@ -282,10 +294,12 @@ module tb_complex_types;
       nested_packed_s1.data         = 16'h9000 + step * 16'h0111;
 
       // Nested unpacked struct
+`ifndef ICARUS
       nested_unpacked_s1.state       = state1;
       nested_unpacked_s1.inner.id    = byte'(step + 8'h10);
       nested_unpacked_s1.inner.value = 8'h60 + step;
       nested_unpacked_s1.count       = 200 + step * 5;
+`endif
 
       // Packed arrays
       packed_arr1[0] = 8'h10 + step;
@@ -314,6 +328,7 @@ module tb_complex_types;
       unpacked_2d1[1][2] = 60 + step;
 
       // Array of structs
+`ifndef ICARUS
       packed_s_arr1[0].a = step + 0;
       packed_s_arr1[0].b = 8'h11 + step;
       packed_s_arr1[0].c = step[0];
@@ -325,11 +340,14 @@ module tb_complex_types;
       packed_s_arr1[2].a = step + 2;
       packed_s_arr1[2].b = 8'h33 + step;
       packed_s_arr1[2].c = step[1];
+`endif
 
       // Struct with unpacked array field
+`ifndef ICARUS
       swa1.data[0] = 8'hE0 + step;
       swa1.data[1] = 8'hF0 + step;
       swa1.id      = 100 + step;
+`endif
 
       // Dynamic array
       dyn_arr1 = new[step + 1];
@@ -344,7 +362,9 @@ module tb_complex_types;
       end
 
       // Associative array
+`ifndef ICARUS
       assoc1[$sformatf("k%0d", step)] = step * 7;
+`endif
 
       // Class handle / class fields
       pkt1 = new(step, 8'h55 + step);
@@ -379,23 +399,40 @@ module tb_complex_types;
     str1 = "";
     state1 = ST_IDLE;
     packed_s1 = '0;
-    unpacked_s1 = '{x:'0, y:'0, z:ST_IDLE};
+`ifndef ICARUS
+    unpacked_s1.x = '0;
+    unpacked_s1.y = '0;
+    unpacked_s1.z = ST_IDLE;
+`endif
     packed_u1 = '0;
     tagged1 = '0;
     nested_packed_s1 = '0;
-    nested_unpacked_s1 = '{state:ST_IDLE, inner:'{id:'0, value:'0}, count:'0};
+`ifndef ICARUS
+    nested_unpacked_s1.state = ST_IDLE;
+    nested_unpacked_s1.inner.id = '0;
+    nested_unpacked_s1.inner.value = '0;
+    nested_unpacked_s1.count = '0;
+`endif
     packed_arr1 = '0;
     packed_3d1 = '0;
 
     foreach (unpacked_arr1[i]) unpacked_arr1[i] = '0;
     foreach (unpacked_2d1[i,j]) unpacked_2d1[i][j] = '0;
+`ifndef ICARUS
     foreach (packed_s_arr1[i]) packed_s_arr1[i] = '0;
+`endif
 
-    swa1 = '{data:'{'0, '0}, id:'0};
+`ifndef ICARUS
+    swa1.data[0] = '0;
+    swa1.data[1] = '0;
+    swa1.id = '0;
+`endif
 
     dyn_arr1 = new[0];
     queue1 = {};
+`ifndef ICARUS
     assoc1.delete();
+`endif
     pkt1 = null;
 
     repeat (2) @(posedge clk);

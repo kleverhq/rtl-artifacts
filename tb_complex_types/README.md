@@ -108,5 +108,8 @@ make clean
 - FSDB targets require Verdi/Novas integration via `NOVAS_HOME`.
 - Runtime-only constructs such as dynamic containers, class internals, and
   events may not appear uniformly in generated dumps.
+- Icarus excludes a few unsupported probe shapes from this fixture, notably
+  unpacked structs, structs with unpacked array fields, string associative
+  arrays, and arrays of structs.
 - `make all` is only useful in environments where every simulator is installed;
   most users will run individual targets.
