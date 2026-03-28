@@ -261,6 +261,7 @@ RUN apt-get update && \
     libssl-dev \
     pkg-config \
     g++ \
+    zlib1g-dev \
     mold \
     ccache \
     locales \
