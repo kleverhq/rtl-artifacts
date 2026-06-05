@@ -556,7 +556,7 @@ Use `git status --short --ignored` to confirm that `artifacts/`, `projects/*/dow
 - [x] Updated the plan for reviewer findings about stale artifacts, writable container homes/caches, project `ARTIFACTS_DIR` defaults, SCR1 download semantics, Chipyard setup and paths, target serialization, Icarus validation, and cleanup/shell validation.
 - [x] Ran a final control review pass and fixed findings about download stamp dependencies, image prerequisites for containerized prepare, and host-side bind directory creation before Docker runs.
 - [x] Ran a clean control review and fixed findings about `tb_complex_types/versions.mk` and nested artifact parent directory creation.
-- [ ] Run a final targeted sanity check after the clean-control fixes.
+- [x] Ran a final targeted sanity check after the clean-control fixes; reviewer reported no substantive findings.
 - [ ] Implement Milestone 1.
 - [ ] Implement Milestone 2.
 - [ ] Implement Milestone 3.
@@ -609,5 +609,7 @@ Decision: Artifact recipes must create nested parent directories before copying 
 ## Outcomes & Retrospective
 
 This plan has not been implemented yet. The expected outcome is a repository where root commands operate from the host, project pipelines are isolated, generated state is ignored, and the default artifact flow no longer depends on a devcontainer or global `/opt` source trees.
+
+Planning review is complete. Architecture, execution-plan, build-feasibility, control, and targeted sanity reviewers inspected the plan. Substantive findings were folded into the plan, and the final targeted sanity check reported no substantive findings.
 
 At the end of implementation, add a retrospective entry here describing which projects were fully validated, which expensive targets were only smoke-tested, and any tradeoffs made around Chipyard setup time or Docker image size.
