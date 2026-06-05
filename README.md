@@ -2,13 +2,14 @@
 
 This repository generates waveform artifacts for several RTL projects without depending on a devcontainer or global `/opt` source trees. The root `Makefile` is the host entry point. Each project under `projects/<name>/` owns its own Docker image, source download cache, prepared work tree, and artifact recipes.
 
-The main user-visible result is a reproducible `artifacts/` tree containing waveform files, mostly `.fst` waveform databases plus the small VCD probes from `tb_complex_types`. A clean artifact run is:
+The main user-visible result is a reproducible `artifacts/` tree containing waveform files, mostly `.fst` waveform databases plus the small VCD probes from `tb_complex_types` and the SystemC-Components VCD/FST/FTR example artifacts. A normal incremental artifact run that preserves existing outputs is:
 
 ```bash
-make artifacts-clean
 make collect
 find artifacts -type f | sort
 ```
+
+Use `make artifacts-clean` only when you intentionally want to remove the entire artifact tree, including expensive outputs from other projects.
 
 ## Repository layout
 
@@ -17,6 +18,7 @@ find artifacts -type f | sort
 - `projects/picorv32/` builds PicoRV32 artifacts from a pinned upstream checkout.
 - `projects/chipyard/` builds Chipyard artifacts from a pinned upstream checkout.
 - `projects/tb_complex_types/` builds an internal SystemVerilog waveform fixture.
+- `projects/systemc-components/` builds MINRES SystemC-Components example artifacts from a pinned upstream checkout.
 - `artifacts/` is ignored generated output.
 
 Generated state is intentionally local to each project and ignored by Git:
@@ -46,6 +48,7 @@ Default `make collect` builds these artifacts:
 | PicoRV32 | `artifacts/picorv32/{test_vcd,test_wb_vcd,test_ez_vcd}.fst` |
 | Chipyard | `artifacts/chipyard/{DualRocketConfig,ClusteredRocketConfig}/{dhrystone,towers,qsort,memcpy,mt-memcpy,mt-vvadd}.fst` |
 | tb_complex_types | `artifacts/tb_complex_types/verilator/vcd/waves.vcd`, `artifacts/tb_complex_types/verilator/fst/waves.fst`, `artifacts/tb_complex_types/icarus/vcd/waves.vcd`, `artifacts/tb_complex_types/icarus/fst/waves.fst` |
+| systemc-components | VCD/FST/FTR files listed by `make list-systemc-components` under `artifacts/systemc-components/{waves,ftr,converted}/` |
 
 ## Common commands
 
@@ -78,7 +81,7 @@ Remove project work directories, build stamps, and the selected project artifact
 make clean
 ```
 
-Remove the whole artifact tree, including stale files not owned by current project lists:
+Remove the whole artifact tree, including stale files not owned by current project lists. This is destructive and can remove expensive artifacts from every project:
 
 ```bash
 make artifacts-clean

@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-PROJECTS ?= scr1 picorv32 chipyard tb_complex_types
+PROJECTS ?= scr1 picorv32 chipyard tb_complex_types systemc-components
 ARTIFACTS_DIR ?= artifacts
 ARTIFACTS_ROOT := $(abspath $(ARTIFACTS_DIR))
 
@@ -28,7 +28,7 @@ help:
 	@printf '  %-24s %s\n' 'make list' 'List artifact targets for PROJECTS.'
 	@printf '  %-24s %s\n' 'make shell-<project>' 'Open a debug shell in one project image.'
 	@printf '  %-24s %s\n' 'make clean' 'Remove project work/build output and project artifacts.'
-	@printf '  %-24s %s\n' 'make artifacts-clean' 'Remove the whole artifacts directory, including stale files.'
+	@printf '  %-24s %s\n' 'make artifacts-clean' 'Destructively remove the whole artifacts directory.'
 	@printf '  %-24s %s\n' 'make distclean' 'Run clean and remove downloads too.'
 	@printf '  %-24s %s\n' 'make release VERSION=vX.Y.Z' 'Create a GitHub release from artifacts.'
 	@printf '\nPROJECTS=%s\nARTIFACTS_DIR=%s\n' '$(PROJECTS)' '$(ARTIFACTS_DIR)'

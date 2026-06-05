@@ -719,7 +719,7 @@ Use `git status --short --ignored` to confirm that `artifacts/`, `projects/*/dow
 - [x] Ran focused architecture/release and code/build review lanes on the systemc-components plan extension.
 - [x] Updated the plan for review findings about disposable cleanup validation, exact make-list/find comparison, README destructive-clean warnings, batch failure atomicity, expected SCC executable inventory, Docker dependency specificity, download cache reset/clean behavior, submodule verification, and before/after artifact snapshots.
 - [x] Ran a fresh control review on the revised systemc-components plan; reviewer reported no substantive findings.
-- [ ] Implement Milestone 11: add project files, root project registration, and README updates without collecting SCC artifacts.
+- [x] Implement Milestone 11: added `projects/systemc-components` project files, root `PROJECTS` registration, root README updates, and cheap validation without collecting SCC artifacts.
 - [ ] Implement Milestone 12: build, prepare, and collect the systemc-components artifact set.
 - [ ] Implement Milestone 13: run implementation review, apply fixes, validate, and commit coherent changes.
 
@@ -753,6 +753,8 @@ The SCC experiment tracked logs and generated artifacts directly because it was 
 Existing root artifacts are expensive and currently present. Validation for this extension must not use `make artifacts-clean` or default-artifact cleanup commands. The safe pattern is additive collection under `artifacts/systemc-components/` plus temporary artifact directories for any cleanup checks.
 
 Plan review found one subtle Make hazard: if a grouped SCC artifact rule copies partial outputs into final `/artifacts` and then fails, those fresh file mtimes can make a later `make collect` skip a bad run. The fix is to stage and validate every expected artifact first, and update final artifacts only after all expected executables exit successfully and the manifest is complete.
+
+Milestone 11 cheap validation passed before any SCC artifact collection. `bash -n projects/systemc-components/scripts/run_examples.sh`, `make -C projects/systemc-components help`, `make -C projects/systemc-components --no-print-directory list`, `make list PROJECTS="systemc-components"`, `make list`, `git diff --check`, and `bash -n scripts/release.sh` all succeeded. The existing non-systemc artifact count remained 33, and `artifacts/systemc-components/` did not exist yet.
 
 
 ## Decision Log
@@ -824,3 +826,5 @@ Tradeoffs remain intentional: SCR1 and Chipyard build exact Verilator v5.042 in 
 2026-06-05: Extended the plan for the `systemc-components` project after inspecting the sibling SCC experiment. The revision records SCC pins, the artifact manifest, the project build approach, review gates, no-delete validation rules for existing artifacts, and new milestones before implementation.
 
 2026-06-05: Applied focused plan-review findings before implementation. The plan now requires disposable cleanup validation, exact listed-vs-actual artifact comparison, README warnings for destructive artifact cleanup, atomic SCC artifact publication after batch success, an explicit expected executable inventory, stronger Docker dependency notes, clean/reset download cache semantics, submodule verification, and before/after snapshots of non-systemc artifacts. A fresh control review reported no substantive findings.
+
+2026-06-05: Completed Milestone 11 by adding the `projects/systemc-components` skeleton, root project registration, README updates, artifact manifest, runner script, Dockerfile, versions file, and SCC patch. Cheap validation succeeded and no existing artifacts were removed.
