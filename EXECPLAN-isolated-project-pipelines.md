@@ -99,6 +99,7 @@ The final repository should have this shape:
         └── tb_complex_types/
             ├── Makefile
             ├── Dockerfile
+            ├── versions.mk                # tracked, may contain only tool pins
             ├── README.md
             ├── tb.sv
             ├── downloads/                 # ignored and normally unused
@@ -131,7 +132,7 @@ Every directory under `projects/` that produces artifacts must expose the same M
 
 Project Makefiles should use actual artifact files as Make targets wherever feasible. For example, `collect` in `projects/picorv32/Makefile` should depend on `$(ARTIFACTS_DIR)/test_vcd.fst`, `$(ARTIFACTS_DIR)/test_wb_vcd.fst`, and `$(ARTIFACTS_DIR)/test_ez_vcd.fst`. This preserves incremental behavior: existing artifacts are skipped unless their dependencies are newer or the user cleans them.
 
-Every project must use a standard dependency graph. `collect` depends on artifact file targets. Artifact file targets depend on a prepare stamp, an image stamp, `Makefile`, `versions.mk`, tracked source files used by the artifact, and any patch files. The image stamp depends on `Dockerfile` and `versions.mk`. The download stamp depends on `versions.mk`, `Makefile`, and any tracked download helper files, so pin changes cannot reuse stale downloads. The prepare stamp depends on the download stamp, `versions.mk`, patches, tracked local sources, and the image stamp whenever `prepare` runs inside the project Docker image. If `versions.mk` or patches change, `prepare` must recreate the relevant `work/src` contents instead of reusing stale sources. Artifact recipes should write through a temporary file and move it into place only after success where practical.
+Every project must use a standard dependency graph and must have a tracked `versions.mk`, even if the project is internal and the file only records tool pins or a comment that there is no upstream source. `collect` depends on artifact file targets. Artifact file targets depend on a prepare stamp, an image stamp, `Makefile`, `versions.mk`, tracked source files used by the artifact, and any patch files. The image stamp depends on `Dockerfile` and `versions.mk`. The download stamp depends on `versions.mk`, `Makefile`, and any tracked download helper files, so pin changes cannot reuse stale downloads. The prepare stamp depends on the download stamp, `versions.mk`, patches, tracked local sources, and the image stamp whenever `prepare` runs inside the project Docker image. If `versions.mk` or patches change, `prepare` must recreate the relevant `work/src` contents instead of reusing stale sources. Artifact recipes must create parent directories before writing nested outputs, such as with `mkdir -p "$(@D)"` on the host side or `mkdir -p /artifacts/<subdir>` inside the container. Artifact recipes should write through a temporary file and move it into place only after success where practical.
 
 Do not let parallel Make jobs corrupt shared upstream outputs. If a project recipe reuses one source tree and one waveform output path, serialize that project's artifact targets with `.NOTPARALLEL`, a lock, or per-artifact isolated work directories. The first migration may use serialization for SCR1, PicoRV32, and Chipyard because their current recipes reuse shared files such as `simx.vcd`, `testbench.vcd`, and simulator output directories. Root-level projects may still run independently because each project has separate `downloads/`, `work/`, and artifact directories.
 
@@ -303,6 +304,8 @@ Suggested final artifact paths are:
 ### tb_complex_types
 
 Move the existing tracked `tb_complex_types/` directory to `projects/tb_complex_types/`. This is an internal project, not an upstream checkout. Preserve `tb.sv`, `README.md`, and the useful simulator-target logic from its Makefile.
+
+Create `projects/tb_complex_types/versions.mk` even though there is no upstream repository. Use it to record tool pins such as the Verilator version used by the Dockerfile, or include a comment saying the project has no external source pins. The file exists so the standard stamp dependency graph is uniform across all projects.
 
 Create `projects/tb_complex_types/Dockerfile` for the open-source default flow. It should install Verilator, Icarus Verilog, `gtkwave` or another provider of `vcd2fst`, GNU Make, Bash, and build-essential tooling. It should not install Questa, VCS, Xcelium, or Verdi because those are vendor/licensed tools and cannot be assumed in the default Docker flow.
 
@@ -552,7 +555,8 @@ Use `git status --short --ignored` to confirm that `artifacts/`, `projects/*/dow
 - [x] Ran focused architecture, execution-plan, and build-feasibility reviews on the initial plan.
 - [x] Updated the plan for reviewer findings about stale artifacts, writable container homes/caches, project `ARTIFACTS_DIR` defaults, SCR1 download semantics, Chipyard setup and paths, target serialization, Icarus validation, and cleanup/shell validation.
 - [x] Ran a final control review pass and fixed findings about download stamp dependencies, image prerequisites for containerized prepare, and host-side bind directory creation before Docker runs.
-- [ ] Run one clean control review after the final fixes.
+- [x] Ran a clean control review and fixed findings about `tb_complex_types/versions.mk` and nested artifact parent directory creation.
+- [ ] Run a final targeted sanity check after the clean-control fixes.
 - [ ] Implement Milestone 1.
 - [ ] Implement Milestone 2.
 - [ ] Implement Milestone 3.
@@ -596,6 +600,10 @@ Decision: Store upstream version pins in each project's `versions.mk`. Reason: v
 Decision: Serialize project artifact targets unless they use isolated per-artifact work directories. Reason: current upstream recipes for SCR1, PicoRV32, and Chipyard reuse shared output paths, so parallel artifact targets can race and copy the wrong waveform.
 
 Decision: Project Docker runs must set writable `HOME` and cache directories under `/work`. Reason: running containers as the host UID avoids root-owned files, but Git, Conda, ccache, and Python still need writable state paths.
+
+Decision: Every project gets a tracked `versions.mk`, including internal projects. Reason: uniform stamp dependencies are simpler and safer than special-casing projects without upstream source pins.
+
+Decision: Artifact recipes must create nested parent directories before copying outputs. Reason: `artifacts/<project>/...` now contains subdirectories, and Docker only guarantees the mounted artifact root exists.
 
 
 ## Outcomes & Retrospective
