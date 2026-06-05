@@ -46,8 +46,15 @@ simulators and dump formats, which is the main point of the fixture.
 
 Run commands from `projects/tb_complex_types/`.
 
-There are also umbrella targets per simulator that build every dump format that
-simulator supports.
+The default isolated pipeline builds Verilator and Icarus artifacts through Docker:
+
+```sh
+make image
+make collect
+make list
+```
+
+There are also optional host/vendor umbrella targets per simulator that build every dump format that simulator supports when those tools are installed on the host.
 
 Questa:
 
@@ -110,5 +117,4 @@ make clean
 - Icarus excludes a few unsupported probe shapes from this fixture, notably
   unpacked structs, structs with unpacked array fields, string associative
   arrays, and arrays of structs.
-- `make all` is only useful in environments where every simulator is installed;
-  most users will run individual targets.
+- `make collect` is the portable default. Vendor simulator targets are optional probes for environments where those commercial tools are already installed.

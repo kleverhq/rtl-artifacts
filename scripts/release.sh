@@ -5,8 +5,9 @@ usage() {
   cat <<'EOF'
 Usage: scripts/release.sh <version>
 
-Create a GitHub release for <version>, ensure artifacts are collected,
-and upload every file from artifacts/ as individual release assets.
+Create a GitHub release for <version>, collect artifacts incrementally, and
+upload every file from artifacts/ as an individual release asset. Nested
+artifact paths are converted to unique asset names by replacing '/' with '__'.
 EOF
 }
 
@@ -53,26 +54,43 @@ if gh release view "$version" >/dev/null 2>&1; then
 fi
 
 target_commit="$(git rev-parse HEAD)"
-
 artifacts_dir="${ARTIFACTS_DIR:-artifacts}"
-dockerfile_path=".devcontainer/Dockerfile"
 
-if [[ ! -f "$dockerfile_path" ]]; then
-  echo "Error: '$dockerfile_path' is required to extract pinned RTL SHAs."
-  exit 1
-fi
+read_var() {
+  local file="$1"
+  local name="$2"
+  awk -v name="$name" '
+    $0 ~ "^[[:space:]]*" name "[[:space:]]*(:=|=)" {
+      sub("^[^:=]*(:=|=)[[:space:]]*", "")
+      print
+      exit
+    }
+  ' "$file"
+}
 
-chipyard_sha="$(git -C /opt/chipyard rev-parse HEAD 2>/dev/null || true)"
-scr1_sha="$(awk -F= '/^ARG SCR1_COMMIT=/{print $2; exit}' "$dockerfile_path")"
-picorv32_sha="$(awk -F= '/^ARG PICORV32_COMMIT=/{print $2; exit}' "$dockerfile_path")"
+required_versions=(
+  projects/scr1/versions.mk
+  projects/picorv32/versions.mk
+  projects/chipyard/versions.mk
+  projects/tb_complex_types/versions.mk
+)
 
-if [[ -z "$chipyard_sha" ]]; then
-  echo "Error: failed to resolve Chipyard SHA from /opt/chipyard."
-  exit 1
-fi
+for file in "${required_versions[@]}"; do
+  if [[ ! -f "$file" ]]; then
+    echo "Error: missing version file '$file'."
+    exit 1
+  fi
+done
 
-if [[ -z "$scr1_sha" || -z "$picorv32_sha" ]]; then
-  echo "Error: failed to parse SCR1/PicoRV32 SHAs from $dockerfile_path."
+scr1_sha="$(read_var projects/scr1/versions.mk SCR1_COMMIT)"
+picorv32_sha="$(read_var projects/picorv32/versions.mk PICORV32_COMMIT)"
+chipyard_sha="$(read_var projects/chipyard/versions.mk CHIPYARD_COMMIT)"
+verilator_version="$(read_var projects/scr1/versions.mk VERILATOR_VERSION)"
+riscv_xpack_version="$(read_var projects/scr1/versions.mk RISCV_XPACK_VERSION)"
+miniforge_version="$(read_var projects/chipyard/versions.mk MINIFORGE_VERSION)"
+
+if [[ -z "$scr1_sha" || -z "$picorv32_sha" || -z "$chipyard_sha" ]]; then
+  echo "Error: failed to parse project commit pins from versions.mk files."
   exit 1
 fi
 
@@ -92,24 +110,31 @@ if (( ${#artifacts[@]} == 0 )); then
 fi
 
 declare -A seen_asset_names
+release_assets=()
 for file in "${artifacts[@]}"; do
-  asset_name="${file##*/}"
+  rel="${file#"$artifacts_dir"/}"
+  asset_name="${rel//\//__}"
   if [[ -n "${seen_asset_names[$asset_name]:-}" ]]; then
-    echo "Error: duplicate artifact filename '$asset_name' in '$file' and '${seen_asset_names[$asset_name]}'."
-    echo "GitHub release assets require unique filenames."
+    echo "Error: duplicate release asset name '$asset_name' from '$file' and '${seen_asset_names[$asset_name]}'."
     exit 1
   fi
   seen_asset_names["$asset_name"]="$file"
+  release_assets+=("$file#$asset_name")
 done
 
 notes_file="$(mktemp)"
 trap 'rm -f "$notes_file"' EXIT
 
 cat >"$notes_file" <<EOF
-## RTL SHAs
-- Chipyard: \`$chipyard_sha\`
+## RTL source pins
 - SCR1: \`$scr1_sha\`
 - PicoRV32: \`$picorv32_sha\`
+- Chipyard: \`$chipyard_sha\`
+
+## Tool pins
+- Verilator for SCR1/Chipyard images: \`$verilator_version\`
+- RISC-V xPack toolchain for SCR1/PicoRV32 images: \`$riscv_xpack_version\`
+- Miniforge for Chipyard image: \`$miniforge_version\`
 
 ## Artifacts
 - Uploaded files: ${#artifacts[@]}
@@ -117,7 +142,7 @@ cat >"$notes_file" <<EOF
 EOF
 
 echo "Creating GitHub release '$version' and uploading ${#artifacts[@]} assets..."
-gh release create "$version" "${artifacts[@]}" --title "$version" --notes-file "$notes_file" --target "$target_commit"
+gh release create "$version" "${release_assets[@]}" --title "$version" --notes-file "$notes_file" --target "$target_commit"
 
 release_url="$(gh release view "$version" --json url --jq '.url')"
 echo "Release created: $release_url"

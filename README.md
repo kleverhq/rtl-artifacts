@@ -1,74 +1,95 @@
 # rtl-artifacts
 
-Repository for generating and storing RTL artifacts: simulator logs,
-waveform dumps, binaries, and other reproducible outputs.
+This repository generates waveform artifacts for several RTL projects without depending on a devcontainer or global `/opt` source trees. The root `Makefile` is the host entry point. Each project under `projects/<name>/` owns its own Docker image, source download cache, prepared work tree, and artifact recipes.
 
-The goal is to keep heavy HDL toolchains out of application repositories
-(Rust/Python/etc) and centralize artifact production in one place.
-
-## Included RTL components
-
-- SCR1: preinstalled in the Docker image at `/opt/scr1`
-- PicoRV32: preinstalled in the Docker image at `/opt/picorv32`
-- Chipyard: preinstalled in the Docker image at `/opt/chipyard`
-
-## Current artifact scope
-
-At the moment, `make collect` stores only simulation waveform dumps from test
-runs in `.fst` format (Verilator-based collection flow).
-
-| Project | Configs | Tests |
-| --- | --- | --- |
-| SCR1 | `MAX` (buses: `AXI`, `AHB`) | `isr_sample`, `riscv_arch`, `riscv_compliance`, `riscv_isa`, `hello`, `coremark`, `dhrystone21` |
-| PicoRV32 | Target defaults | `test_vcd`, `test_wb_vcd`, `test_ez_vcd` |
-| Chipyard | `DualRocketConfig`, `ClusteredRocketConfig` | `dhrystone`, `towers`, `qsort`, `memcpy`, `mt-memcpy`, `mt-vvadd` |
-
-## Quick start
-
-Clone the repository first:
+The main user-visible result is a reproducible `artifacts/` tree containing `.fst` waveform databases. A clean artifact run is:
 
 ```bash
-git clone <repo-url>
-cd rtl-artifacts
+rm -rf artifacts
+make collect
+find artifacts -type f | sort
 ```
 
-Run all commands inside the Docker image defined in
-`.devcontainer/Dockerfile`.
+## Repository layout
 
-You can use either:
-- Dev Containers (recommended): open this repository in a devcontainer.
-- Manual Docker run: build and run the same image yourself.
+- `Makefile` delegates to isolated project pipelines.
+- `projects/scr1/` builds SCR1 artifacts from a pinned upstream checkout.
+- `projects/picorv32/` builds PicoRV32 artifacts from a pinned upstream checkout.
+- `projects/chipyard/` builds Chipyard artifacts from a pinned upstream checkout.
+- `projects/tb_complex_types/` builds an internal SystemVerilog waveform fixture.
+- `artifacts/` is ignored generated output.
+
+Generated state is intentionally local to each project and ignored by Git:
+
+- `projects/*/downloads/` contains upstream source caches.
+- `projects/*/work/` contains prepared source trees and build outputs.
+- `projects/*/.build/` contains Make stamp files.
+- `artifacts/` contains generated release assets.
+
+## Host prerequisites
+
+The host must have Docker, GNU Make, Git, Bash, and standard POSIX utilities. GitHub CLI (`gh`) is required only for releases.
+
+Check the host with:
 
 ```bash
-docker build -f .devcontainer/Dockerfile -t rtl-artifacts:dev .
-docker run --rm -it --network host \
-  -v "$(pwd):/workspaces/rtl-artifacts" \
-  -w /workspaces/rtl-artifacts \
-  rtl-artifacts:dev bash
+make tools-check
 ```
 
-Then run bootstrap inside the container (installs hooks, checks tools, and
-verifies external RTL source trees):
+## Artifact scope
+
+Default `make collect` builds these artifacts:
+
+| Project | Artifact paths |
+| --- | --- |
+| SCR1 | `artifacts/scr1/max/{axi,ahb}/{isr_sample,riscv_arch,riscv_compliance,riscv_isa,hello,coremark,dhrystone21}.fst` |
+| PicoRV32 | `artifacts/picorv32/{test_vcd,test_wb_vcd,test_ez_vcd}.fst` |
+| Chipyard | `artifacts/chipyard/{DualRocketConfig,ClusteredRocketConfig}/{dhrystone,towers,qsort,memcpy,mt-memcpy,mt-vvadd}.fst` |
+| tb_complex_types | `artifacts/tb_complex_types/{verilator,icarus}/{vcd,fst}/waves.{vcd,fst}` |
+
+## Common commands
+
+Run all projects:
 
 ```bash
-make bootstrap
-```
-
-## Collect all artifacts
-
-```bash
+make images
+make download
+make prepare
 make collect
 ```
 
-Each generated `.fst` is also a valid Make target, so you can build exactly one
-artifact and skip everything already collected:
+Run a subset:
 
 ```bash
-make artifacts/scr1_max_axi_hello.fst
+make collect PROJECTS="scr1 tb_complex_types"
 ```
 
-## Other commands
+Run one project directly:
 
 ```bash
-make help
+make -C projects/scr1 collect
+make -C projects/picorv32 list
+make -C projects/chipyard shell
 ```
+
+Remove generated outputs while keeping downloaded source caches:
+
+```bash
+make clean
+```
+
+Remove generated outputs and downloaded source caches:
+
+```bash
+make distclean
+```
+
+## Releases
+
+Create a release from the current `artifacts/` tree:
+
+```bash
+make release VERSION=vX.Y.Z
+```
+
+The release script runs `make collect` incrementally before uploading. Because GitHub release assets are flat, nested artifact paths are converted into unique names by replacing `/` with `__`, for example `chipyard__DualRocketConfig__dhrystone.fst`.

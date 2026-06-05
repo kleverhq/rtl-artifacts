@@ -44,7 +44,7 @@ help:
 
 image: $(IMAGE_STAMP)
 $(IMAGE_STAMP): Dockerfile versions.mk | $(BUILD_DIR)
-	docker build -t "$(IMAGE)" .
+	docker build --network host -t "$(IMAGE)" .
 	mkdir -p "$(@D)"
 	touch "$@"
 
