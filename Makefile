@@ -12,7 +12,7 @@ ARTIFACTS_ROOT := $(abspath $(ARTIFACTS_DIR))
         collect collect-% \
         list list-% \
         shell-% \
-        clean clean-% \
+        clean clean-% artifacts-clean \
         distclean distclean-% \
         release
 
@@ -27,7 +27,8 @@ help:
 	@printf '  %-24s %s\n' 'make collect-<project>' 'Collect one project.'
 	@printf '  %-24s %s\n' 'make list' 'List artifact targets for PROJECTS.'
 	@printf '  %-24s %s\n' 'make shell-<project>' 'Open a debug shell in one project image.'
-	@printf '  %-24s %s\n' 'make clean' 'Remove work/build output and artifacts.'
+	@printf '  %-24s %s\n' 'make clean' 'Remove project work/build output and project artifacts.'
+	@printf '  %-24s %s\n' 'make artifacts-clean' 'Remove the whole artifacts directory, including stale files.'
 	@printf '  %-24s %s\n' 'make distclean' 'Run clean and remove downloads too.'
 	@printf '  %-24s %s\n' 'make release VERSION=vX.Y.Z' 'Create a GitHub release from artifacts.'
 	@printf '\nPROJECTS=%s\nARTIFACTS_DIR=%s\n' '$(PROJECTS)' '$(ARTIFACTS_DIR)'
@@ -72,9 +73,11 @@ shell-%:
 	@$(MAKE) --no-print-directory -C "projects/$*" shell ARTIFACTS_DIR="$(ARTIFACTS_ROOT)/$*"
 
 clean: $(PROJECTS:%=clean-%)
-	rm -rf "$(ARTIFACTS_ROOT)"
 clean-%:
 	@$(MAKE) --no-print-directory -C "projects/$*" clean ARTIFACTS_DIR="$(ARTIFACTS_ROOT)/$*"
+
+artifacts-clean:
+	rm -rf "$(ARTIFACTS_ROOT)"
 
 distclean: clean $(PROJECTS:%=distclean-%)
 distclean-%:

@@ -560,12 +560,12 @@ Use `git status --short --ignored` to confirm that `artifacts/`, `projects/*/dow
 - [x] Implement Milestone 1: replaced root orchestration with a host-only delegating Makefile and removed bootstrap/pre-commit as the public workflow.
 - [x] Implement Milestone 2: created `projects/`, moved `tb_complex_types` into it, added root and project breadcrumbs, and updated ignores for generated state.
 - [x] Implement Milestone 3: added isolated `tb_complex_types` Docker/Make pipeline and validated its default Verilator/Icarus artifacts.
-- [ ] Implement Milestone 4.
-- [ ] Implement Milestone 5.
-- [ ] Implement Milestone 6.
-- [ ] Implement Milestone 7.
-- [ ] Implement Milestone 8.
-- [ ] Implement Milestone 9.
+- [x] Implement Milestone 4: added isolated SCR1 Docker, source download, prepare, list, and waveform collection pipeline; validated all 14 SCR1 artifacts.
+- [x] Implement Milestone 5: added isolated PicoRV32 Docker, source download, prepare, list, and waveform collection pipeline; validated all 3 PicoRV32 artifacts.
+- [x] Implement Milestone 6: added isolated Chipyard Docker, source download, build-setup prepare, list, and waveform collection pipeline; validated all 12 Chipyard artifacts.
+- [x] Implement Milestone 7: removed the global devcontainer, legacy root project `.mk` includes, and tracked pre-commit configuration; kept generated state ignored.
+- [x] Implement Milestone 8: rewrote release flow to read project `versions.mk` files, collect incrementally, flatten nested asset names, and reject stale unlisted artifacts.
+- [x] Implement Milestone 9: updated README/breadcrumb docs, ran validation commands, ran code/docs/architecture review lanes, and applied review fixes.
 
 
 ## Surprises & Discoveries
@@ -579,6 +579,16 @@ Nested artifact paths are clearer than current long flat filenames, but GitHub r
 Reviewers caught several implementation traps that were easy to miss in a high-level architecture: SCR1 and PicoRV32 reuse shared waveform output paths, Chipyard setup creates required runtime state and benchmark binaries, containers running as host UID still need writable `HOME` and cache paths, and project-local `ARTIFACTS_DIR` defaults must point back to the root artifact tree for standalone project runs.
 
 During `tb_complex_types` validation, Ubuntu 24.04's packaged Verilator 5.020 rejected `--trace-vcd`. The compatible VCD flag is `--trace`. The FST build also needed `zlib1g-dev` because Verilator compiles `verilated_fst_c.cpp` against `zlib.h`.
+
+Docker image builds hit a transient SSL timeout while downloading the xPack RISC-V toolchain from GitHub. Adding curl retries and `docker build --network host` made image builds resilient in this VPN-heavy environment.
+
+SCR1's upstream Verilator wrapper invokes `ccache g++`. The final SCR1 runtime image initially lacked `ccache` because it was only installed in the Verilator builder stage; adding `ccache` to the runtime image fixed SCR1 collection.
+
+Chipyard `build-setup.sh riscv-tools --skip-ctags --skip-firesim --skip-marshal` completed inside `projects/chipyard/work/src` and produced the expected benchmark binaries under `$RISCV/riscv64-unknown-elf/share/riscv-tests/benchmarks/`.
+
+Implementation reviewers found two important final-control gaps: root `make clean PROJECTS=<subset>` must not delete other projects' artifacts, and releases must not upload stale ignored files left under `artifacts/`. The fix was to add an explicit `make artifacts-clean` for whole-tree artifact purges and make `scripts/release.sh` upload only paths reported by `make list` while failing on unlisted extras.
+
+The fresh control review caught three more release/build hygiene issues. GitHub CLI's `file#label` syntax does not rename release assets, so the release script now hardlinks or copies artifacts into a temporary flat staging directory with unique filenames before upload. Project `.dockerignore` files were added so `downloads/`, `work/`, and `.build/` do not enter Docker build contexts after collection. The release script also rejects dirty worktrees by default so uploaded artifacts and notes match the target commit.
 
 
 ## Decision Log
@@ -609,11 +619,23 @@ Decision: Artifact recipes must create nested parent directories before copying 
 
 Decision: Use Ubuntu 24.04 packaged Verilator and Icarus for the internal `tb_complex_types` fixture image. Reason: this project is a simulator compatibility probe rather than an upstream CPU flow, and the first milestone needs a small image that proves the isolated project contract before heavier pinned CPU toolchains are introduced.
 
+Decision: Add `make artifacts-clean` instead of making aggregate `make clean` delete the entire artifact root. Reason: `PROJECTS=<subset> make clean` should respect the selected project set, while stale whole-tree cleanup must remain available as an explicit command.
+
+Decision: Generate release asset lists from `make list` and reject unlisted files under `artifacts/`. Reason: ignored stale artifacts can otherwise be uploaded silently, especially after changing from old flat names to nested project paths.
+
+Decision: Project image stamps record the requested Docker image tag and verify that the tag exists before skipping a build. Reason: `IMAGE=custom make image` must not silently reuse a stamp created for the default image tag.
+
+Decision: Stage release assets under temporary flat filenames before calling `gh release create`. Reason: GitHub release assets are flat and `gh` treats `file#text` as a display label rather than a filename rename, so direct nested uploads can still collide on basenames.
+
+Decision: Add `.dockerignore` to every project image context. Reason: once downloads and work trees exist, sending them to Docker as build context is slow, fragile, and defeats project isolation.
+
+Decision: Require a clean Git worktree for releases unless `ALLOW_DIRTY=1` is set. Reason: release assets and notes should correspond to the commit targeted by the GitHub release.
+
 
 ## Outcomes & Retrospective
 
-Milestones 1 through 3 are implemented. Root commands now delegate to project directories from the host, `tb_complex_types` lives under `projects/`, generated state is ignored, and the internal fixture produces four default waveform artifacts under `artifacts/tb_complex_types/` from its own Docker image.
+All implementation milestones are complete. Root commands run from the host and delegate to project-local pipelines. SCR1, PicoRV32, Chipyard, and `tb_complex_types` each have their own Dockerfile, Makefile, versions file, ignored download/work/build directories, and artifact list. The global devcontainer and legacy root project `.mk` files are gone.
 
-Planning review is complete. Architecture, execution-plan, build-feasibility, control, and targeted sanity reviewers inspected the plan. Substantive findings were folded into the plan, and the final targeted sanity check reported no substantive findings.
+Validation produced all 33 expected artifact targets: 14 SCR1 FST files, 3 PicoRV32 FST files, 12 Chipyard FST files, and 4 `tb_complex_types` waveform files. The final implementation review ran code, docs, and architecture lanes; findings about release stale artifacts, scoped clean behavior, image stamp metadata, README artifact accuracy, and plan freshness were applied.
 
-At the end of implementation, add a retrospective entry here describing which projects were fully validated, which expensive targets were only smoke-tested, and any tradeoffs made around Chipyard setup time or Docker image size.
+Tradeoffs remain intentional: SCR1 and Chipyard build exact Verilator v5.042 in their images, while `tb_complex_types` uses Ubuntu 24.04 packaged open-source simulators for a smaller internal fixture image. Chipyard setup is expensive but project-local and reproducible from `projects/chipyard/versions.mk`.

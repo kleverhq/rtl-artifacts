@@ -28,7 +28,7 @@ ARTIFACTS := \
         verilator verilator-vcd verilator-fst icarus icarus-vcd icarus-fst \
         questa questa-wlf questa-vcd questa-fsdb \
         vcs vcs-vpd vcs-vcd vcs-fsdb \
-        xcelium xcelium-shm xcelium-vcd xcelium-fsdb
+        xcelium xcelium-shm xcelium-vcd xcelium-fsdb FORCE
 
 help:
 	@printf '%s\n' 'Targets:'
@@ -43,10 +43,16 @@ help:
 	@printf '\nOptional host/vendor targets still exist: questa, vcs, xcelium and format-specific variants.\n'
 
 image: $(IMAGE_STAMP)
-$(IMAGE_STAMP): Dockerfile versions.mk | $(BUILD_DIR)
-	docker build --network host -t "$(IMAGE)" .
-	mkdir -p "$(@D)"
-	touch "$@"
+$(IMAGE_STAMP): Dockerfile .dockerignore versions.mk Makefile FORCE | $(BUILD_DIR)
+	@set -euo pipefail; \
+	if [ -f "$@" ] && [ "$@" -nt Dockerfile ] && [ "$@" -nt .dockerignore ] && [ "$@" -nt versions.mk ] && [ "$@" -nt Makefile ] && grep -Fx 'IMAGE=$(IMAGE)' "$@" >/dev/null 2>&1 && docker image inspect "$(IMAGE)" >/dev/null 2>&1; then \
+		exit 0; \
+	fi; \
+	docker build --network host -t "$(IMAGE)" .; \
+	mkdir -p "$(@D)"; \
+	printf 'IMAGE=%s\n' "$(IMAGE)" > "$@"
+
+FORCE:
 
 download: $(DOWNLOAD_STAMP)
 $(DOWNLOAD_STAMP): Makefile versions.mk | $(BUILD_DIR)

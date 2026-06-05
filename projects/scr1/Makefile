@@ -35,7 +35,7 @@ ARTIFACTS := \
 	$(ARTIFACTS_DIR)/max/ahb/coremark.fst \
 	$(ARTIFACTS_DIR)/max/ahb/dhrystone21.fst
 
-.PHONY: help image download prepare collect list shell clean distclean
+.PHONY: help image download prepare collect list shell clean distclean FORCE
 
 help:
 	@printf '%s\n' 'Targets:'
@@ -49,14 +49,20 @@ help:
 	@printf '  %-18s %s\n' 'distclean' 'Run clean and remove downloads too.'
 
 image: $(IMAGE_STAMP)
-$(IMAGE_STAMP): Dockerfile versions.mk | $(BUILD_DIR)
+$(IMAGE_STAMP): Dockerfile .dockerignore versions.mk Makefile FORCE | $(BUILD_DIR)
+	@set -euo pipefail; \
+	if [ -f "$@" ] && [ "$@" -nt Dockerfile ] && [ "$@" -nt .dockerignore ] && [ "$@" -nt versions.mk ] && [ "$@" -nt Makefile ] && grep -Fx 'IMAGE=$(IMAGE)' "$@" >/dev/null 2>&1 && docker image inspect "$(IMAGE)" >/dev/null 2>&1; then \
+		exit 0; \
+	fi; \
 	docker build --network host \
 	  --build-arg TOOL_IMAGE_BASE="$(TOOL_IMAGE_BASE)" \
 	  --build-arg VERILATOR_VERSION="$(VERILATOR_VERSION)" \
 	  --build-arg RISCV_XPACK_VERSION="$(RISCV_XPACK_VERSION)" \
-	  -t "$(IMAGE)" .
-	mkdir -p "$(@D)"
-	touch "$@"
+	  -t "$(IMAGE)" .; \
+	mkdir -p "$(@D)"; \
+	printf 'IMAGE=%s\n' "$(IMAGE)" > "$@"
+
+FORCE:
 
 download: $(DOWNLOAD_STAMP)
 $(DOWNLOAD_STAMP): Makefile versions.mk | $(BUILD_DIR)

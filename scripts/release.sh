@@ -6,8 +6,11 @@ usage() {
 Usage: scripts/release.sh <version>
 
 Create a GitHub release for <version>, collect artifacts incrementally, and
-upload every file from artifacts/ as an individual release asset. Nested
-artifact paths are converted to unique asset names by replacing '/' with '__'.
+upload every file reported by `make list` as an individual release asset. Nested
+artifact paths are staged under unique flat filenames by replacing '/' with '__'.
+
+The worktree must be clean so release assets and notes match the target commit.
+Set ALLOW_DIRTY=1 only for a deliberate local dry run.
 EOF
 }
 
@@ -53,93 +56,102 @@ if gh release view "$version" >/dev/null 2>&1; then
   exit 1
 fi
 
-target_commit="$(git rev-parse HEAD)"
-artifacts_dir="${ARTIFACTS_DIR:-artifacts}"
-
-read_var() {
-  local file="$1"
-  local name="$2"
-  awk -v name="$name" '
-    $0 ~ "^[[:space:]]*" name "[[:space:]]*(:=|=)" {
-      sub("^[^:=]*(:=|=)[[:space:]]*", "")
-      print
-      exit
-    }
-  ' "$file"
-}
-
-required_versions=(
-  projects/scr1/versions.mk
-  projects/picorv32/versions.mk
-  projects/chipyard/versions.mk
-  projects/tb_complex_types/versions.mk
-)
-
-for file in "${required_versions[@]}"; do
-  if [[ ! -f "$file" ]]; then
-    echo "Error: missing version file '$file'."
-    exit 1
-  fi
-done
-
-scr1_sha="$(read_var projects/scr1/versions.mk SCR1_COMMIT)"
-picorv32_sha="$(read_var projects/picorv32/versions.mk PICORV32_COMMIT)"
-chipyard_sha="$(read_var projects/chipyard/versions.mk CHIPYARD_COMMIT)"
-verilator_version="$(read_var projects/scr1/versions.mk VERILATOR_VERSION)"
-riscv_xpack_version="$(read_var projects/scr1/versions.mk RISCV_XPACK_VERSION)"
-miniforge_version="$(read_var projects/chipyard/versions.mk MINIFORGE_VERSION)"
-
-if [[ -z "$scr1_sha" || -z "$picorv32_sha" || -z "$chipyard_sha" ]]; then
-  echo "Error: failed to parse project commit pins from versions.mk files."
+mapfile -t version_files < <(find projects -mindepth 2 -maxdepth 2 -name versions.mk | sort)
+if (( ${#version_files[@]} == 0 )); then
+  echo "Error: no project versions.mk files found."
   exit 1
 fi
 
+if [[ "${ALLOW_DIRTY:-0}" != "1" ]]; then
+  git update-index -q --refresh
+  if ! git diff --quiet || ! git diff --cached --quiet || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+    echo "Error: worktree is dirty. Commit changes before releasing, or set ALLOW_DIRTY=1 for a deliberate dry run."
+    exit 1
+  fi
+fi
+
+target_commit="$(git rev-parse HEAD)"
+artifacts_dir="${ARTIFACTS_DIR:-artifacts}"
+
 echo "Collecting artifacts (incremental via make targets)..."
-make collect
+ARTIFACTS_DIR="$artifacts_dir" make --no-print-directory collect
 
 if [[ ! -d "$artifacts_dir" ]]; then
   echo "Error: artifacts directory '$artifacts_dir' does not exist."
   exit 1
 fi
 
-mapfile -d '' artifacts < <(find "$artifacts_dir" -type f -print0 | sort -z)
+artifacts_dir_abs="$(cd "$artifacts_dir" && pwd)"
 
+mapfile -t artifacts < <(ARTIFACTS_DIR="$artifacts_dir_abs" make --no-print-directory list | sort)
 if (( ${#artifacts[@]} == 0 )); then
-  echo "Error: no files found in '$artifacts_dir'."
+  echo "Error: make list produced no artifacts."
   exit 1
 fi
+
+declare -A listed_artifacts
+for file in "${artifacts[@]}"; do
+  if [[ ! -f "$file" ]]; then
+    echo "Error: listed artifact does not exist: $file"
+    exit 1
+  fi
+  listed_artifacts["$file"]=1
+done
+
+mapfile -d '' existing_files < <(find "$artifacts_dir_abs" -type f -print0 | sort -z)
+for file in "${existing_files[@]}"; do
+  if [[ -z "${listed_artifacts[$file]:-}" ]]; then
+    echo "Error: unlisted artifact exists and would make release ambiguous: $file"
+    echo "Remove stale artifacts or add the file to a project list target."
+    exit 1
+  fi
+done
+
+stage_dir="$(mktemp -d "$artifacts_dir_abs/.release-upload.XXXXXX")"
+notes_file="$(mktemp)"
+trap 'rm -rf "$stage_dir"; rm -f "$notes_file"' EXIT
 
 declare -A seen_asset_names
 release_assets=()
 for file in "${artifacts[@]}"; do
-  rel="${file#"$artifacts_dir"/}"
+  rel="${file#"$artifacts_dir_abs"/}"
   asset_name="${rel//\//__}"
   if [[ -n "${seen_asset_names[$asset_name]:-}" ]]; then
     echo "Error: duplicate release asset name '$asset_name' from '$file' and '${seen_asset_names[$asset_name]}'."
     exit 1
   fi
   seen_asset_names["$asset_name"]="$file"
-  release_assets+=("$file#$asset_name")
+  staged_file="$stage_dir/$asset_name"
+  if ! ln "$file" "$staged_file" 2>/dev/null; then
+    cp -p "$file" "$staged_file"
+  fi
+  release_assets+=("$staged_file")
 done
 
-notes_file="$(mktemp)"
-trap 'rm -f "$notes_file"' EXIT
-
-cat >"$notes_file" <<EOF
-## RTL source pins
-- SCR1: \`$scr1_sha\`
-- PicoRV32: \`$picorv32_sha\`
-- Chipyard: \`$chipyard_sha\`
-
-## Tool pins
-- Verilator for SCR1/Chipyard images: \`$verilator_version\`
-- RISC-V xPack toolchain for SCR1/PicoRV32 images: \`$riscv_xpack_version\`
-- Miniforge for Chipyard image: \`$miniforge_version\`
-
-## Artifacts
-- Uploaded files: ${#artifacts[@]}
-- Source directory: \`$artifacts_dir/\`
-EOF
+{
+  echo '## Project version pins'
+  for file in "${version_files[@]}"; do
+    project="${file#projects/}"
+    project="${project%%/*}"
+    echo "- ${project} (\`$file\`)"
+    awk '
+      /^[[:space:]]*#/ { next }
+      /^[[:space:]]*$/ { next }
+      /^[[:space:]]*[A-Za-z0-9_]+[[:space:]]*(:=|=)/ {
+        key=$0
+        sub(/^[[:space:]]*/, "", key)
+        sub(/[[:space:]]*(:=|=).*/, "", key)
+        value=$0
+        sub(/^[^:=]*(:=|=)[[:space:]]*/, "", value)
+        printf "  - `%s`: `%s`\n", key, value
+      }
+    ' "$file"
+  done
+  echo
+  echo '## Artifacts'
+  echo "- Uploaded files: ${#artifacts[@]}"
+  echo "- Source directory: \`$artifacts_dir_abs/\`"
+} >"$notes_file"
 
 echo "Creating GitHub release '$version' and uploading ${#artifacts[@]} assets..."
 gh release create "$version" "${release_assets[@]}" --title "$version" --notes-file "$notes_file" --target "$target_commit"
