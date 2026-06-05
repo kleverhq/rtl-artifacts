@@ -1,44 +1,19 @@
 # Agent Guide (rtl-artifacts)
 
-This repository is an RTL artifact workspace, not an application codebase.
-Use it to keep heavy HDL tooling, upstream RTL sources, and generated fixtures
-in one place.
+This repository is an RTL artifact workspace. Root automation orchestrates isolated project pipelines; project-specific build logic belongs under `projects/<name>/`.
 
-## Scope and Intent
+## Local Guidance
 
-- Keep this repo focused on deterministic artifact production workflows.
-- Prefer updating root automation (`Makefile`, container setup, hooks) over
-  adding ad-hoc scripts.
+- Use root `Makefile` targets as the public command surface.
+- Keep the root `Makefile` small: host checks, project delegation, release flow.
+- Do not add a tracked `Justfile` or restore pre-commit hooks without a new design decision.
+- Do not rely on a devcontainer or global `/opt` source trees; project Docker images own their tools.
+- Generated outputs live in ignored `artifacts/`, `projects/*/downloads/`, `projects/*/work/`, and `projects/*/.build/`.
+- Do not commit generated artifacts, downloaded sources, build outputs, credentials, or tool caches.
 
-## Main Commands
+## Workflow
 
-Use `Makefile` targets as the primary interface:
-
-- `make bootstrap` - verify external sources, verify tools, install git hooks.
-- `make tools-check` - print versions of required tooling.
-- `make sources-check` - verify external source trees are present and writable.
-- `make pre-commit` - run hooks on all files.
-- `make check-commit` - validate the current commit message.
-- `make release VERSION=vX.Y.Z` - create a GitHub release and upload all files
-  from `artifacts/` as individual assets.
-
-## Release Workflow (Agent-Owned)
-
-- Use `make release VERSION=<version>` from the repository root.
-- The release flow must stay incremental: rely on `make collect` target validity;
-  do not force `clean` in the release path.
-
-## External Source Policy
-
-- Upstream RTL projects are installed by `.devcontainer/Dockerfile` under `/opt`.
-- Keep upstream revisions pinned explicitly in Docker build arguments.
-- Avoid editing files inside `/opt` trees directly; bump pinned upstream revisions instead.
-- When changing pinned revisions, include upstream commit intent in commit message.
-
-## Container Policy
-
-- `.devcontainer/Dockerfile` defines a single image used both locally and in CI.
-- The devcontainer image includes standalone installs for SCR1, PicoRV32, and
-  Chipyard under `/opt`.
-- Keep tooling setup in one place; avoid parallel "dev" and "ci" variants.
-- The image should contain only tooling needed for artifact generation/inspection.
+- Use `make tools-check` to verify host prerequisites.
+- Use `make collect PROJECTS="scr1 tb_complex_types"` to run a reduced project set.
+- Use `make -C projects/<name> collect` when changing one project pipeline.
+- Use `make release VERSION=vX.Y.Z` only when release assets are ready and GitHub CLI is authenticated.

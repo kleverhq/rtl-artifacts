@@ -1,2 +1,5 @@
 transcript
 artifacts/
+projects/*/downloads/
+projects/*/work/
+projects/*/.build/

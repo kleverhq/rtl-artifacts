@@ -41,11 +41,10 @@ simulators and dump formats, which is the main point of the fixture.
 
 - `tb.sv` - standalone testbench with top module `tb_complex_types`
 - `Makefile` - one target per simulator and dump-format combination
-- `.gitignore` - ignores generated `run-*` directories
 
 ## Targets
 
-Run commands from `tb_complex_types/`.
+Run commands from `projects/tb_complex_types/`.
 
 There are also umbrella targets per simulator that build every dump format that
 simulator supports.
@@ -93,7 +92,7 @@ make icarus-vcd
 make icarus-fst
 ```
 
-To remove generated run directories:
+To remove generated work directories and selected artifacts:
 
 ```sh
 make clean
@@ -101,7 +100,7 @@ make clean
 
 ## Notes
 
-- Each target writes into its own `run-*` directory so outputs can be compared
+- Each target writes into its own `work/run-*` directory so outputs can be compared
   side by side.
 - Vendor-native formats are used where available: WLF for Questa, VPD for VCS,
   SHM for Xcelium, and FST where the simulator supports it.

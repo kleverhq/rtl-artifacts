@@ -557,9 +557,9 @@ Use `git status --short --ignored` to confirm that `artifacts/`, `projects/*/dow
 - [x] Ran a final control review pass and fixed findings about download stamp dependencies, image prerequisites for containerized prepare, and host-side bind directory creation before Docker runs.
 - [x] Ran a clean control review and fixed findings about `tb_complex_types/versions.mk` and nested artifact parent directory creation.
 - [x] Ran a final targeted sanity check after the clean-control fixes; reviewer reported no substantive findings.
-- [ ] Implement Milestone 1.
-- [ ] Implement Milestone 2.
-- [ ] Implement Milestone 3.
+- [x] Implement Milestone 1: replaced root orchestration with a host-only delegating Makefile and removed bootstrap/pre-commit as the public workflow.
+- [x] Implement Milestone 2: created `projects/`, moved `tb_complex_types` into it, added root and project breadcrumbs, and updated ignores for generated state.
+- [x] Implement Milestone 3: added isolated `tb_complex_types` Docker/Make pipeline and validated its default Verilator/Icarus artifacts.
 - [ ] Implement Milestone 4.
 - [ ] Implement Milestone 5.
 - [ ] Implement Milestone 6.
@@ -577,6 +577,8 @@ The current release script reads SCR1 and PicoRV32 pins from `.devcontainer/Dock
 Nested artifact paths are clearer than current long flat filenames, but GitHub release assets require unique asset names. The release script must flatten relative paths at upload time or it will collide on names like `hello.fst` and `waves.fst`.
 
 Reviewers caught several implementation traps that were easy to miss in a high-level architecture: SCR1 and PicoRV32 reuse shared waveform output paths, Chipyard setup creates required runtime state and benchmark binaries, containers running as host UID still need writable `HOME` and cache paths, and project-local `ARTIFACTS_DIR` defaults must point back to the root artifact tree for standalone project runs.
+
+During `tb_complex_types` validation, Ubuntu 24.04's packaged Verilator 5.020 rejected `--trace-vcd`. The compatible VCD flag is `--trace`. The FST build also needed `zlib1g-dev` because Verilator compiles `verilated_fst_c.cpp` against `zlib.h`.
 
 
 ## Decision Log
@@ -605,10 +607,12 @@ Decision: Every project gets a tracked `versions.mk`, including internal project
 
 Decision: Artifact recipes must create nested parent directories before copying outputs. Reason: `artifacts/<project>/...` now contains subdirectories, and Docker only guarantees the mounted artifact root exists.
 
+Decision: Use Ubuntu 24.04 packaged Verilator and Icarus for the internal `tb_complex_types` fixture image. Reason: this project is a simulator compatibility probe rather than an upstream CPU flow, and the first milestone needs a small image that proves the isolated project contract before heavier pinned CPU toolchains are introduced.
+
 
 ## Outcomes & Retrospective
 
-This plan has not been implemented yet. The expected outcome is a repository where root commands operate from the host, project pipelines are isolated, generated state is ignored, and the default artifact flow no longer depends on a devcontainer or global `/opt` source trees.
+Milestones 1 through 3 are implemented. Root commands now delegate to project directories from the host, `tb_complex_types` lives under `projects/`, generated state is ignored, and the internal fixture produces four default waveform artifacts under `artifacts/tb_complex_types/` from its own Docker image.
 
 Planning review is complete. Architecture, execution-plan, build-feasibility, control, and targeted sanity reviewers inspected the plan. Substantive findings were folded into the plan, and the final targeted sanity check reported no substantive findings.
 
