@@ -131,7 +131,7 @@ Every directory under `projects/` that produces artifacts must expose the same M
 
 Project Makefiles should use actual artifact files as Make targets wherever feasible. For example, `collect` in `projects/picorv32/Makefile` should depend on `$(ARTIFACTS_DIR)/test_vcd.fst`, `$(ARTIFACTS_DIR)/test_wb_vcd.fst`, and `$(ARTIFACTS_DIR)/test_ez_vcd.fst`. This preserves incremental behavior: existing artifacts are skipped unless their dependencies are newer or the user cleans them.
 
-Every project must use a standard dependency graph. `collect` depends on artifact file targets. Artifact file targets depend on a prepare stamp, an image stamp, `Makefile`, `versions.mk`, tracked source files used by the artifact, and any patch files. The image stamp depends on `Dockerfile` and `versions.mk`. The prepare stamp depends on the download stamp, `versions.mk`, patches, and tracked local sources. If `versions.mk` or patches change, `prepare` must recreate the relevant `work/src` contents instead of reusing stale sources. Artifact recipes should write through a temporary file and move it into place only after success where practical.
+Every project must use a standard dependency graph. `collect` depends on artifact file targets. Artifact file targets depend on a prepare stamp, an image stamp, `Makefile`, `versions.mk`, tracked source files used by the artifact, and any patch files. The image stamp depends on `Dockerfile` and `versions.mk`. The download stamp depends on `versions.mk`, `Makefile`, and any tracked download helper files, so pin changes cannot reuse stale downloads. The prepare stamp depends on the download stamp, `versions.mk`, patches, tracked local sources, and the image stamp whenever `prepare` runs inside the project Docker image. If `versions.mk` or patches change, `prepare` must recreate the relevant `work/src` contents instead of reusing stale sources. Artifact recipes should write through a temporary file and move it into place only after success where practical.
 
 Do not let parallel Make jobs corrupt shared upstream outputs. If a project recipe reuses one source tree and one waveform output path, serialize that project's artifact targets with `.NOTPARALLEL`, a lock, or per-artifact isolated work directories. The first migration may use serialization for SCR1, PicoRV32, and Chipyard because their current recipes reuse shared files such as `simx.vcd`, `testbench.vcd`, and simulator output directories. Root-level projects may still run independently because each project has separate `downloads/`, `work/`, and artifact directories.
 
@@ -183,8 +183,10 @@ There must be no global devcontainer image. Remove `.devcontainer/Dockerfile`, `
 
 Each artifact project that needs tools must own its own `Dockerfile`. A project Dockerfile installs only the tools needed by that project. It must not install unrelated editor tools, coding agents, pre-commit tooling, Surfer, slang-server, or other convenience packages unless the project uses them to produce artifacts.
 
-Run project containers from project Makefiles with explicit volume mounts and writable cache locations. Use this pattern unless a project needs a documented variation:
+Run project containers from project Makefiles with explicit volume mounts and writable cache locations. Recipes must create host-side bind mount directories before `docker run`; otherwise Docker may create missing directories as root-owned paths and the host-UID container will not be able to write to them. Use this pattern unless a project needs a documented variation:
 
+    mkdir -p "$(DOWNLOADS_DIR)" "$(WORK_DIR)" "$(ARTIFACTS_DIR)" "$(BUILD_DIR)"
+    test -w "$(DOWNLOADS_DIR)" && test -w "$(WORK_DIR)" && test -w "$(ARTIFACTS_DIR)"
     docker run --rm \
       --user "$$(id -u):$$(id -g)" \
       -e HOME=/work/.home \
@@ -549,7 +551,8 @@ Use `git status --short --ignored` to confirm that `artifacts/`, `projects/*/dow
 - [x] Authored this ExecPlan as the handoff document for implementation.
 - [x] Ran focused architecture, execution-plan, and build-feasibility reviews on the initial plan.
 - [x] Updated the plan for reviewer findings about stale artifacts, writable container homes/caches, project `ARTIFACTS_DIR` defaults, SCR1 download semantics, Chipyard setup and paths, target serialization, Icarus validation, and cleanup/shell validation.
-- [ ] Run a final control review pass on the updated plan.
+- [x] Ran a final control review pass and fixed findings about download stamp dependencies, image prerequisites for containerized prepare, and host-side bind directory creation before Docker runs.
+- [ ] Run one clean control review after the final fixes.
 - [ ] Implement Milestone 1.
 - [ ] Implement Milestone 2.
 - [ ] Implement Milestone 3.
