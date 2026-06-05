@@ -30,7 +30,7 @@ Generated state is intentionally local to each project and ignored by Git:
 
 ## Host prerequisites
 
-The host must have Docker, GNU Make, Git, Bash, and standard POSIX utilities. The current user must be able to build and run Docker containers. First-time `image`, `download`, and `prepare` runs need network access to GitHub, Ubuntu package mirrors, xPack releases, Miniforge, and Chipyard-managed dependencies. GitHub CLI (`gh`) is required only for releases.
+The host must have Docker, GNU Make, Git, Bash, and standard POSIX utilities. The current user must be able to build and run Docker containers. First-time `image`, `download`, and `prepare` runs need network access to GitHub, Ubuntu package mirrors, PyPI, Conan package remotes such as Conan Center, xPack releases, Miniforge, and Chipyard-managed dependencies. GitHub CLI (`gh`) is required only for releases.
 
 Check the host with:
 

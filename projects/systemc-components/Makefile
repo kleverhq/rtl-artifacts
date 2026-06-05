@@ -1,4 +1,6 @@
 SHELL := /bin/bash
+.SHELLFLAGS := -e -o pipefail -c
+.ONESHELL:
 .DEFAULT_GOAL := help
 .NOTPARALLEL:
 
@@ -15,12 +17,16 @@ include versions.mk
 IMAGE_STAMP := $(BUILD_DIR)/image.stamp
 DOWNLOAD_STAMP := $(BUILD_DIR)/download.stamp
 PREPARE_STAMP := $(BUILD_DIR)/prepare.stamp
+COLLECT_STAMP := $(BUILD_DIR)/collect.stamp
 SRC_DIR := $(WORK_DIR)/src
 DOWNLOAD_SRC_DIR := $(DOWNLOADS_DIR)/src
 PATCH_FILE := patches/scc-include-cxs-channel.patch
 ARTIFACT_RELATIVE := $(shell sed '/^[[:space:]]*$$/d' artifacts.list)
 ARTIFACTS := $(addprefix $(ARTIFACTS_DIR)/,$(ARTIFACT_RELATIVE))
 PROJECT_SOURCES := Makefile Dockerfile .dockerignore versions.mk artifacts.list scripts/run_examples.sh $(PATCH_FILE)
+DOWNLOAD_INPUTS := Makefile versions.mk
+PREPARE_INPUTS := $(DOWNLOAD_STAMP) $(IMAGE_STAMP) Makefile versions.mk $(PATCH_FILE)
+COLLECT_INPUTS := $(PREPARE_STAMP) $(IMAGE_STAMP) $(PROJECT_SOURCES)
 
 .PHONY: help image download prepare collect list shell clean distclean FORCE
 
@@ -51,8 +57,13 @@ $(IMAGE_STAMP): Dockerfile .dockerignore versions.mk Makefile FORCE | $(BUILD_DI
 FORCE:
 
 download: $(DOWNLOAD_STAMP)
-$(DOWNLOAD_STAMP): Makefile versions.mk | $(BUILD_DIR)
+$(DOWNLOAD_STAMP): $(DOWNLOAD_INPUTS) FORCE | $(BUILD_DIR)
 	@set -euo pipefail; \
+	fresh=1; \
+	for dep in $(DOWNLOAD_INPUTS); do [ -f "$@" ] && [ "$@" -nt "$$dep" ] || fresh=0; done; \
+	if [ $$fresh -eq 1 ] && [ "$$(git -C "$(DOWNLOAD_SRC_DIR)" rev-parse HEAD 2>/dev/null || true)" = "$(SYSTEMC_COMPONENTS_COMMIT)" ] && [ "$$(git -C "$(DOWNLOAD_SRC_DIR)/third_party/axi_chi" rev-parse HEAD 2>/dev/null || true)" = "$(SYSTEMC_COMPONENTS_AXI_CHI_COMMIT)" ] && [ "$$(git -C "$(DOWNLOAD_SRC_DIR)/third_party/lwtr4sc" rev-parse HEAD 2>/dev/null || true)" = "$(SYSTEMC_COMPONENTS_LWTR4SC_COMMIT)" ]; then \
+		exit 0; \
+	fi; \
 	mkdir -p "$(DOWNLOADS_DIR)"; \
 	if [ ! -d "$(DOWNLOAD_SRC_DIR)/.git" ]; then \
 		rm -rf "$(DOWNLOAD_SRC_DIR)"; \
@@ -73,8 +84,19 @@ $(DOWNLOAD_STAMP): Makefile versions.mk | $(BUILD_DIR)
 	touch "$@"
 
 prepare: $(PREPARE_STAMP)
-$(PREPARE_STAMP): $(DOWNLOAD_STAMP) $(IMAGE_STAMP) Makefile versions.mk $(PATCH_FILE) | $(BUILD_DIR)
+$(PREPARE_STAMP): $(PREPARE_INPUTS) FORCE | $(BUILD_DIR)
 	@set -euo pipefail; \
+	fresh=1; \
+	for dep in $(PREPARE_INPUTS); do [ -f "$@" ] && [ "$@" -nt "$$dep" ] || fresh=0; done; \
+	examples_dir="$(SRC_DIR)/build/$(SCC_BUILD_PRESET)/examples"; \
+	if [ -d "$$examples_dir" ]; then \
+		exe_count=$$(find "$$examples_dir" -maxdepth 2 -type f -perm -111 | wc -l | tr -d '[:space:]'); \
+	else \
+		exe_count=0; \
+	fi; \
+	if [ $$fresh -eq 1 ] && [ "$$(git -C "$(SRC_DIR)" rev-parse HEAD 2>/dev/null || true)" = "$(SYSTEMC_COMPONENTS_COMMIT)" ] && [ "$$(git -C "$(SRC_DIR)/third_party/axi_chi" rev-parse HEAD 2>/dev/null || true)" = "$(SYSTEMC_COMPONENTS_AXI_CHI_COMMIT)" ] && [ "$$(git -C "$(SRC_DIR)/third_party/lwtr4sc" rev-parse HEAD 2>/dev/null || true)" = "$(SYSTEMC_COMPONENTS_LWTR4SC_COMMIT)" ] && git -C "$(SRC_DIR)" apply --reverse --check "$(abspath $(PATCH_FILE))" >/dev/null 2>&1 && [ "$$exe_count" = "17" ]; then \
+		exit 0; \
+	fi; \
 	rm -rf "$(SRC_DIR)"; \
 	mkdir -p "$(WORK_DIR)"; \
 	cp -a "$(DOWNLOAD_SRC_DIR)" "$(SRC_DIR)"; \
@@ -98,9 +120,21 @@ list:
 $(BUILD_DIR):
 	mkdir -p "$@"
 
-$(ARTIFACTS) &: $(PREPARE_STAMP) $(IMAGE_STAMP) $(PROJECT_SOURCES)
+$(COLLECT_STAMP): $(COLLECT_INPUTS) FORCE | $(BUILD_DIR)
+	@set -euo pipefail; \
+	fresh=1; \
+	for dep in $(COLLECT_INPUTS); do [ -f "$@" ] && [ "$@" -nt "$$dep" ] || fresh=0; done; \
+	for artifact in $(ARTIFACTS); do [ -s "$$artifact" ] || fresh=0; done; \
+	if [ $$fresh -eq 1 ]; then \
+		exit 0; \
+	fi; \
+	rm -f "$@"
 	@echo 'Collecting SystemC-Components example artifacts'
 	@$(call RUN_IN_CONTAINER,SCC_ARTIFACTS_LIST=/project/artifacts.list SCC_BUILD_PRESET="$(SCC_BUILD_PRESET)" SCC_EXAMPLE_TIMEOUT_SECONDS="$(SCC_EXAMPLE_TIMEOUT_SECONDS)" /project/scripts/run_examples.sh)
+	@touch "$@"
+
+$(ARTIFACTS): $(COLLECT_STAMP)
+	@test -s "$@"
 
 shell: $(IMAGE_STAMP) $(PREPARE_STAMP)
 	@mkdir -p "$(DOWNLOADS_DIR)" "$(WORK_DIR)" "$(ARTIFACTS_DIR)" "$(BUILD_DIR)"
@@ -128,8 +162,10 @@ distclean: clean
 	rm -rf "$(DOWNLOADS_DIR)"
 
 define RUN_IN_CONTAINER
-mkdir -p "$(DOWNLOADS_DIR)" "$(WORK_DIR)" "$(ARTIFACTS_DIR)" "$(BUILD_DIR)" && \
-test -w "$(DOWNLOADS_DIR)" && test -w "$(WORK_DIR)" && test -w "$(ARTIFACTS_DIR)" && \
+mkdir -p "$(DOWNLOADS_DIR)" "$(WORK_DIR)" "$(ARTIFACTS_DIR)" "$(BUILD_DIR)"
+test -w "$(DOWNLOADS_DIR)"
+test -w "$(WORK_DIR)"
+test -w "$(ARTIFACTS_DIR)"
 docker run --rm \
   --user "$$(id -u):$$(id -g)" \
   -e HOME=/work/.home \
