@@ -1,6 +1,6 @@
 # Isolated Project Pipelines ExecPlan
 
-This plan describes how to reshape this repository from one shared devcontainer-based RTL artifact workspace into a host-driven collection of isolated project pipelines. After this change, a user with only Docker, GNU Make, Git, and Bash on the host can run `make collect` from the repository root and get generated RTL artifacts under the ignored `artifacts/` directory. Each artifact-producing project owns its own Docker image, source download/cache area, build work area, artifact targets, and local contract.
+This plan describes how to reshape this repository from one shared devcontainer-based RTL artifact workspace into a host-driven collection of isolated project pipelines. After this change, a user with only Docker, GNU Make, Git, and Bash on the host can run `make collect` from the repository root and get generated RTL artifacts under the ignored `artifacts/` directory. Each artifact-producing project owns its own Docker image, source download/cache area, build work area, artifact targets, and local contract. The current extension adds a new `systemc-components` project that builds the MINRES SystemC-Components examples and collects VCD, FST, and FTR artifacts without deleting the expensive existing artifact tree.
 
 The current repository has a root `Makefile` that includes `scr1.mk`, `picorv32.mk`, and `chipyard.mk`, plus a global `.devcontainer/Dockerfile` that installs all tools and all upstream sources into `/opt`. That model couples unrelated projects together. The new model must remove that coupling. The root must orchestrate projects only; each directory under `projects/` must be able to build its own artifacts independently.
 
@@ -10,6 +10,8 @@ The current repository has a root `Makefile` that includes `scr1.mk`, `picorv32.
 An artifact is a generated file that this repository exists to produce, such as a `.fst` waveform dump. Final artifacts live under the root `artifacts/` directory and are not tracked by Git.
 
 A project is one artifact-producing directory under `projects/`. A project owns a `Makefile`, usually a `Dockerfile`, optional version pins, optional patches, an ignored `downloads/` cache, an ignored `work/` build directory, and rules that copy final outputs into the root artifact tree.
+
+SystemC is a C++ library for hardware-like simulation. Transaction Level Modeling, abbreviated TLM, is a SystemC style where components exchange higher-level transactions instead of individual pin toggles. MINRES SystemC-Components, abbreviated SCC in upstream paths, is a C++ library of SystemC and TLM helpers plus examples. A VCD file is a Value Change Dump waveform file. An FST file is a Fast Signal Trace waveform file used by GTKWave. An FTR file is a Fast Transaction Recording file produced by SCC's transaction recording support; it is not the same thing as a signal waveform, but it is an analysis artifact produced by the same example runs.
 
 The root orchestrator is the root `Makefile`. It must not contain simulator-specific or upstream-project-specific build commands. It only checks host tools, delegates targets to `projects/<name>/Makefile`, and runs release packaging/upload logic.
 
@@ -96,14 +98,26 @@ The final repository should have this shape:
         │   ├── patches/                   # optional, may be empty or absent
         │   ├── downloads/                 # ignored
         │   └── work/                      # ignored
-        └── tb_complex_types/
+        ├── tb_complex_types/
+        │   ├── Makefile
+        │   ├── Dockerfile
+        │   ├── versions.mk                # tracked, may contain only tool pins
+        │   ├── README.md
+        │   ├── tb.sv
+        │   ├── downloads/                 # ignored and normally unused
+        │   └── work/                      # ignored run directories
+        └── systemc-components/
             ├── Makefile
             ├── Dockerfile
-            ├── versions.mk                # tracked, may contain only tool pins
+            ├── versions.mk
             ├── README.md
-            ├── tb.sv
-            ├── downloads/                 # ignored and normally unused
-            └── work/                      # ignored run directories
+            ├── artifacts.list             # tracked list of default VCD/FST/FTR outputs
+            ├── patches/
+            │   └── scc-include-cxs-channel.patch
+            ├── scripts/
+            │   └── run_examples.sh
+            ├── downloads/                 # ignored SCC source cache
+            └── work/                      # ignored SCC build and example run directories
 
 Do not add a `Justfile`. The user explicitly chose not to add one. This repository needs Make's file-target graph for incremental artifact production, not a second task-runner surface. If a future contributor wants a local convenience wrapper, it must remain outside the tracked repository or be justified in a separate design.
 
@@ -143,7 +157,7 @@ The root `Makefile` must become a small orchestrator. It must not include `scr1.
 
 The root Makefile should define project names in one place:
 
-    PROJECTS ?= scr1 picorv32 chipyard tb_complex_types
+    PROJECTS ?= scr1 picorv32 chipyard tb_complex_types systemc-components
     ARTIFACTS_DIR ?= artifacts
 
 It should expose these root targets:
@@ -319,6 +333,71 @@ The default `collect` target should build the open-source artifacts that can run
 Keep optional Make targets for Questa, VCS, Xcelium, and FSDB only if they remain clearly documented as host/vendor-tool paths outside the default Docker artifact flow. Do not include them in default `collect` until their tools are available and their source compatibility has been verified.
 
 Change generated run directories to live under `work/`, not beside tracked source files. For example, use `WORK_DIR ?= work` and create `$(WORK_DIR)/run-verilator-fst` instead of `run-verilator-fst` at the project root. Then `projects/tb_complex_types/.gitignore` can be removed if the root ignore patterns cover all generated directories, or it can remain as a small local guard if useful.
+
+
+### systemc-components
+
+Add `projects/systemc-components/` as a new isolated project derived from the working experiment in the sibling repository at `/home/esynr3z/projects/rtl-artifacts-ws/scc-experiment`. The experiment already proved that SCC tag `2026.05` at commit `b990fb032cad58478348b5bf4acd0052fc01d3f7` can be built, patched, run, and used to generate native VCD/FST waveforms, native FTR transaction recordings, and successful VCD/FST conversions. The new project must adapt that experiment to the repository contract rather than copying the experiment repository wholesale. In particular, generated SCC artifacts must remain ignored under the root `artifacts/` tree, and the tracked repository must contain only source recipes, pins, scripts, patches, documentation, and lists.
+
+Create `projects/systemc-components/versions.mk` with at least:
+
+    SYSTEMC_COMPONENTS_URL := https://github.com/Minres/SystemC-Components.git
+    SYSTEMC_COMPONENTS_VERSION := 2026.05
+    SYSTEMC_COMPONENTS_COMMIT := b990fb032cad58478348b5bf4acd0052fc01d3f7
+    CONAN_VERSION := 2.29.0
+    SCC_BUILD_PRESET := Release
+
+The Docker image must install the tools needed to build and run SCC examples: Bash, Git, CMake, Ninja, GCC/G++, Python 3, Python packaging support, Conan 2.29.0, GTKWave conversion tools such as `vcd2fst` and `fst2vcd`, and ordinary build utilities. Use explicit Debian packages for likely Conan-built dependencies and build systems, including `python3-pip`, `python3-venv`, `ca-certificates`, `curl`, `pkg-config`, `patch`, `autoconf`, `automake`, `libtool`, `flex`, `bison`, `unzip`, `perl`, and `zlib1g-dev`. It must not install unrelated HDL toolchains, editor tools, coding agents, or devcontainer convenience packages. Conan must use cache directories under `/work`, such as `CONAN_HOME=/work/.conan2`, because project containers run as the host user and the project directory is mounted read-only.
+
+The `download` target must populate `projects/systemc-components/downloads/src` with the SCC Git repository at `SYSTEMC_COMPONENTS_COMMIT` and initialize its nested submodules recursively. It must force the parent checkout to the pinned commit, run `git reset --hard` and `git clean -ffdx` on the parent, synchronize submodule URLs, update submodules recursively, and clean/reset submodules recursively so stale local cache state cannot poison the prepared build. At this pinned release the nested submodules observed in the experiment were `third_party/axi_chi` at `042fb78916facdf6adc0fc5f1f26625d62099973` and `third_party/lwtr4sc` at `4fe2d77ad7066ffceacdec327d8803bf37e16895`; the parent SCC commit pins those submodules, so the project Makefile does not need separate variables for them unless a future change requires overriding them.
+
+The `prepare` target must recreate `work/src` from `downloads/src`, verify the parent SCC commit, verify the expected submodule commits, apply `patches/scc-include-cxs-channel.patch` to the prepared work tree, configure SCC with the upstream `Release` CMake preset, force `BUILD_SCC_DOCUMENTATION=OFF`, force `WITH_SCP4SCC=ON`, and build the examples. This target is intentionally heavier than a plain source-copy step because artifact collection requires built example executables. The patch is the same functional patch proven in the experiment: it adds `examples/cxs-channel` to upstream `examples/CMakeLists.txt`, adds the missing include path for that example, binds the CXS clock/reset signals and clock periods, and lets `scc-tlm_target_bfs` create the CCI broker it needs at runtime. The patch is applied to `work/src`, not to tracked files or the cached download tree.
+
+The `collect` target should run the built example executables once as a batch, because examples are discovered under one shared SCC build tree and many small artifact files come from one run phase. It is acceptable for `collect` to use a GNU Make grouped-target rule where all listed VCD/FST/FTR outputs are produced by one script invocation. The script should store scratch run directories, logs, summaries, and conversion logs under `work/`, not under `artifacts/`, unless those metadata files are intentionally added to `artifacts.list`. The default release artifacts for this project are only VCD, FST, and FTR files.
+
+Create `projects/systemc-components/artifacts.list` as the source of truth for `make list`. Each line is a path relative to `artifacts/systemc-components/`. The default list is the 29 output files proven by the experiment:
+
+    converted/apb_bfm__apb_bfm/apb_trace.fst
+    converted/lwtr__lwtr_example/my_db.fst
+    converted/transaction_recording__transaction_recording/my_db.fst
+    converted/transaction_recording__transaction_recording_cftr/my_db.vcd
+    converted/transaction_recording__transaction_recording_ftr/my_db.vcd
+    ftr/ace-axi__ace_axi_example/ace_axi_test.ftr
+    ftr/ahb_bfm__ahb_bfm/ahb_bfm.ftr
+    ftr/apb_bfm__apb_bfm/apb_bfm.ftr
+    ftr/axi4_tlm-pin-tlm__axi4_tlm_pin_tlm_example/axi4_tlm_pin_tlm.ftr
+    ftr/axi4lite_tlm-pin-tlm__axi4lite_tlm_pin_tlm_example/axi4lite_tlm_pin_tlm.ftr
+    ftr/cxs-channel__cxs_channel/cxs_tlm.ftr
+    ftr/lwtr4axi__lwtr4axi_example/lwtr4axi.ftr
+    ftr/simple_system__simple_system/simple_system.ftr
+    ftr/transaction_recording__transaction_recording_cftr/my_db.ftr
+    ftr/transaction_recording__transaction_recording_ftr/my_db.ftr
+    waves/ace-ace__ace_ace_example/ace_axi_test.fst
+    waves/ace-axi__ace_axi_example/ace_axi_test.fst
+    waves/ahb_bfm__ahb_bfm/ahb_bfm.fst
+    waves/apb_bfm__apb_bfm/apb_bfm.fst
+    waves/apb_bfm__apb_bfm/apb_trace.vcd
+    waves/axi-axi__axi_axi_example/axi-axi.fst
+    waves/axi4_tlm-pin-tlm__axi4_tlm_pin_tlm_example/axi4_tlm_pin_tlm.fst
+    waves/axi4lite_tlm-pin-tlm__axi4lite_tlm_pin_tlm_example/axi4lite_tlm_pin_tlm.fst
+    waves/cxs-channel__cxs_channel/cxs_tlm.fst
+    waves/lwtr__lwtr_example/my_db.vcd
+    waves/simple_system__simple_system/simple_system.fst
+    waves/transaction_recording__transaction_recording/my_db.vcd
+    waves/transaction_recording__transaction_recording_cftr/my_db.fst
+    waves/transaction_recording__transaction_recording_ftr/my_db.fst
+
+The runner script should run the 17 expected executables under `/work/src/build/<preset>/examples`, copy simple local inputs such as `.json` and `.gtkw` from the matching SCC source example directory into an isolated per-example run directory under `/work/example-runs`, apply known arguments (`simple_system` uses `-t`; AXI TLM/pin examples use `axi-pin-axi.json`), collect native `.vcd` and `.fst` files into a staging tree, collect native `.ftr` files into the staging tree, attempt `vcd2fst` and `fst2vcd` conversions, and then copy only the files named in `artifacts.list` to `/artifacts` using temporary files and `mv`. The expected executable set is `ace-ace/ace_ace_example`, `ace-axi/ace_axi_example`, `ahb_bfm/ahb_bfm`, `apb_bfm/apb_bfm`, `axi-axi/axi_axi_example`, `axi4_tlm-pin-tlm/axi4_tlm_pin_tlm_example`, `axi4lite_tlm-pin-tlm/axi4lite_tlm_pin_tlm_example`, `cxs-channel/cxs_channel`, `lwtr/lwtr_example`, `lwtr4axi/lwtr4axi_example`, `lwtr4tlm2/lwtr4tlm2`, `scc-tlm_target_bfs/scc-tlm_target_bfs-example`, `scp/scp_example`, `simple_system/simple_system`, `transaction_recording/transaction_recording`, `transaction_recording/transaction_recording_cftr`, and `transaction_recording/transaction_recording_ftr`; if any executable is missing, the script must fail before touching `/artifacts`. If an example exits nonzero, the script must continue running remaining examples so logs and partial evidence remain in `work/`, but the final status must be nonzero. The script must validate that all manifest files exist and are non-empty in the staging tree, and it must copy staged files to `/artifacts` only after every expected executable has run successfully and every expected artifact has passed validation. This avoids a failed batch leaving fresh-looking final artifact mtimes that make a later grouped-target `make collect` skip a bad run. If any expected artifact is missing or empty, the script must fail without updating final artifact files.
+
+Do not delete the existing root `artifacts/` tree during this extension. The current SCR1, PicoRV32, Chipyard, and `tb_complex_types` artifacts are expensive to regenerate. Validation must not run `make artifacts-clean`, root `make clean`, root `make distclean`, or project `clean`/`distclean` against the default `ARTIFACTS_DIR`. If cleanup behavior must be tested, use a disposable temporary artifact directory outside the existing `artifacts/` tree, such as `ARTIFACTS_DIR=/tmp/rtl-artifacts-clean-test/systemc-components`.
+
+Suggested final artifact paths are:
+
+    artifacts/systemc-components/waves/...
+    artifacts/systemc-components/ftr/...
+    artifacts/systemc-components/converted/...
+
+Update the root `PROJECTS` default to include `systemc-components`, update the root README artifact scope and project layout, and ensure the release script needs no special case. The README update must make incremental `make collect` the primary command for preserving existing artifacts, and it must label `make artifacts-clean` as a destructive stale-file purge that removes the whole artifact tree. Because the release script already generates version notes from `projects/*/versions.mk` and flattens listed artifact paths, the new project should integrate by providing a correct `versions.mk` and `make list` output.
 
 
 ## Breadcrumb Files
@@ -512,9 +591,69 @@ Expected final state:
     release script no longer depends on `/opt` or `.devcontainer/Dockerfile`.
 
 
+### Milestone 10: Plan and review the systemc-components extension
+
+Extend this ExecPlan with the SCC experiment findings, the exact new project contract, and the no-delete validation rule for existing artifacts. Run focused read-only reviews before implementation. At minimum, use one architecture lane for project contract and release integration, and one code/build lane for the SCC Docker/Make/script feasibility. Acceptance for this milestone is that reviewers report no blocking design issues or that every blocking issue is reflected back into this plan before code is written.
+
+### Milestone 11: Add systemc-components project files without collecting artifacts
+
+Create `projects/systemc-components/` with `Makefile`, `Dockerfile`, `.dockerignore`, `versions.mk`, `artifacts.list`, `README.md`, `patches/scc-include-cxs-channel.patch`, and `scripts/run_examples.sh`. The Makefile must implement the standard project targets and use `artifacts.list` as the single source for `make list`. Add `systemc-components` to the root `PROJECTS` default and update the root README. Do not run collection in this milestone; only validate cheap surfaces.
+
+Run:
+
+    make help
+    make list-systemc-components
+    make -C projects/systemc-components help
+    make -C projects/systemc-components list
+    bash -n projects/systemc-components/scripts/run_examples.sh
+
+Expected observable result is that list targets print 29 absolute artifact paths under `artifacts/systemc-components/` or the selected absolute `ARTIFACTS_DIR`, and no existing files under `artifacts/scr1`, `artifacts/picorv32`, `artifacts/chipyard`, or `artifacts/tb_complex_types` are removed or modified.
+
+### Milestone 12: Build and validate systemc-components incrementally
+
+Build the new project image, populate the SCC download cache, prepare the SCC work tree, and run the new project collection. These commands may be expensive because Conan can build packages and SCC examples, but they affect only `projects/systemc-components/downloads/`, `projects/systemc-components/work/`, `projects/systemc-components/.build/`, and `artifacts/systemc-components/`.
+
+Run:
+
+    find artifacts -type f ! -path 'artifacts/systemc-components/*' | sort > /tmp/rtl-artifacts-before-systemc.txt
+    make image-systemc-components
+    make download-systemc-components
+    make prepare-systemc-components
+    make collect-systemc-components
+    find artifacts -type f ! -path 'artifacts/systemc-components/*' | sort > /tmp/rtl-artifacts-after-systemc.txt
+    diff -u /tmp/rtl-artifacts-before-systemc.txt /tmp/rtl-artifacts-after-systemc.txt
+
+Expected observable result:
+
+    make list-systemc-components prints 29 files;
+    every listed file exists and has nonzero size;
+    the before/after diff for non-systemc artifacts is empty;
+    no command used `make artifacts-clean`, root `make clean`, root `make distclean`, or default-artifact project cleanup.
+
+If build time or network makes full validation impossible in the current session, run at least `make image-systemc-components`, `make download-systemc-components`, and `make -C projects/systemc-components -n collect`, then record the limitation in `Surprises & Discoveries` and `Outcomes & Retrospective`. Do not fake artifact validation.
+
+### Milestone 13: Review, fix, and commit the extension
+
+After implementation and initial validation, run code and architecture review lanes on the working tree diff. Apply findings in the main session, rerun relevant cheap checks, and rerun expensive collection only if the review finding affects build or artifact behavior. Run a final control review pass after fixes unless the first review only finds tiny wording issues.
+
+Final validation commands are:
+
+    git diff --check
+    bash -n scripts/release.sh
+    bash -n projects/systemc-components/scripts/run_examples.sh
+    make list PROJECTS="systemc-components"
+    make list
+    find artifacts -type f | sort | sed -n '1,120p'
+    make list | sort > /tmp/rtl-artifacts-expected.txt
+    find "$PWD/artifacts" -type f | sort > /tmp/rtl-artifacts-actual.txt
+    diff -u /tmp/rtl-artifacts-expected.txt /tmp/rtl-artifacts-actual.txt
+
+The final `make list` should include the previous 33 artifact paths plus the 29 new `systemc-components` artifact paths when all projects are in `PROJECTS`, and the `diff` between listed files and actual files should be empty. Commit in coherent pieces. A good split is one commit for the plan update, one commit for project implementation and docs, and one commit for review fixes if any are substantive.
+
+
 ## Validation Strategy
 
-Use cheap validation before expensive validation. First validate Make syntax, help output, root delegation, ignore patterns, and the internal `tb_complex_types` project. Then validate PicoRV32, then SCR1, and finally Chipyard.
+Use cheap validation before expensive validation. First validate Make syntax, help output, root delegation, ignore patterns, and the internal `tb_complex_types` project. Then validate PicoRV32, then SCR1, Chipyard, and the new `systemc-components` project. During the `systemc-components` extension, preserve the existing root `artifacts/` tree; do not run root artifact cleanup against the default artifact directory.
 
 For every migrated project, test these commands. Verify artifact existence after `collect` and before any cleanup. Run cleanup checks either after recording that evidence or with a disposable artifact directory so final validation artifacts are not accidentally erased.
 
@@ -525,8 +664,8 @@ For every migrated project, test these commands. Verify artifact existence after
     make -C projects/<name> prepare
     make -C projects/<name> collect ARTIFACTS_DIR=$(pwd)/artifacts/<name>
     make -C projects/<name> -n shell
-    make -C projects/<name> clean ARTIFACTS_DIR=$(pwd)/artifacts/<name>
-    make -C projects/<name> distclean ARTIFACTS_DIR=$(pwd)/artifacts/<name>
+    make -C projects/<name> clean ARTIFACTS_DIR=/tmp/rtl-artifacts-clean-test/<name>
+    make -C projects/<name> distclean ARTIFACTS_DIR=/tmp/rtl-artifacts-clean-test/<name>
 
 From the root, test:
 
@@ -534,13 +673,22 @@ From the root, test:
     make tools-check
     make list
     make collect-<name>
-    make clean-<name>
-    make distclean-<name>
+    ARTIFACTS_DIR=/tmp/rtl-artifacts-clean-test make clean-<name>
+    ARTIFACTS_DIR=/tmp/rtl-artifacts-clean-test make distclean-<name>
     make -n shell-<name>
 
 For generated artifacts, verify files exist and have non-zero size:
 
     find artifacts -type f -size +0c | sort
+
+For `systemc-components`, run cleanup targets only with a disposable artifact directory if cleanup behavior must be checked. For normal validation, use:
+
+    make -C projects/systemc-components help
+    make -C projects/systemc-components list
+    make image-systemc-components
+    make download-systemc-components
+    make prepare-systemc-components
+    make collect-systemc-components
 
 Use `git status --short --ignored` to confirm that `artifacts/`, `projects/*/downloads/`, `projects/*/work/`, and `projects/*/.build/` are ignored. Do not commit generated artifacts.
 
@@ -566,6 +714,14 @@ Use `git status --short --ignored` to confirm that `artifacts/`, `projects/*/dow
 - [x] Implement Milestone 7: removed the global devcontainer, legacy root project `.mk` includes, and tracked pre-commit configuration; kept generated state ignored.
 - [x] Implement Milestone 8: rewrote release flow to read project `versions.mk` files, collect incrementally, flatten nested asset names, and reject stale unlisted artifacts.
 - [x] Implement Milestone 9: updated README/breadcrumb docs, ran validation commands, ran code/docs/architecture review lanes, and applied review fixes.
+- [x] Read the sibling SCC experiment at `/home/esynr3z/projects/rtl-artifacts-ws/scc-experiment`, including its README, living plan, build/run scripts, patch, submodule pins, and generated artifact inventory.
+- [x] Extended this ExecPlan for a new `projects/systemc-components` project and recorded that existing expensive root artifacts must not be deleted during validation.
+- [x] Ran focused architecture/release and code/build review lanes on the systemc-components plan extension.
+- [x] Updated the plan for review findings about disposable cleanup validation, exact make-list/find comparison, README destructive-clean warnings, batch failure atomicity, expected SCC executable inventory, Docker dependency specificity, download cache reset/clean behavior, submodule verification, and before/after artifact snapshots.
+- [x] Ran a fresh control review on the revised systemc-components plan; reviewer reported no substantive findings.
+- [ ] Implement Milestone 11: add project files, root project registration, and README updates without collecting SCC artifacts.
+- [ ] Implement Milestone 12: build, prepare, and collect the systemc-components artifact set.
+- [ ] Implement Milestone 13: run implementation review, apply fixes, validate, and commit coherent changes.
 
 
 ## Surprises & Discoveries
@@ -589,6 +745,14 @@ Chipyard `build-setup.sh riscv-tools --skip-ctags --skip-firesim --skip-marshal`
 Implementation reviewers found two important final-control gaps: root `make clean PROJECTS=<subset>` must not delete other projects' artifacts, and releases must not upload stale ignored files left under `artifacts/`. The fix was to add an explicit `make artifacts-clean` for whole-tree artifact purges and make `scripts/release.sh` upload only paths reported by `make list` while failing on unlisted extras.
 
 The fresh control review caught three more release/build hygiene issues. GitHub CLI's `file#label` syntax does not rename release assets, so the release script now hardlinks or copies artifacts into a temporary flat staging directory with unique filenames before upload. Project `.dockerignore` files were added so `downloads/`, `work/`, and `.build/` do not enter Docker build contexts after collection. The release script also rejects dirty worktrees by default so uploaded artifacts and notes match the target commit.
+
+The SCC experiment in the sibling `scc-experiment` repository proved the upstream tag and exact artifact set before this repository gained a project pipeline. It produced 14 native VCD/FST files, 10 native FTR files, and 5 successful VCD/FST conversion files from 17 example executables. That experiment also proved the need for a temporary patch: `cxs-channel` is present in the release source but not wired into upstream example CMake, the same example misses include and clock/reset wiring, and `scc-tlm_target_bfs` aborts unless SCC is allowed to create the CCI broker.
+
+The SCC experiment tracked logs and generated artifacts directly because it was a standalone proving ground. This repository has a different contract: generated artifacts stay ignored, and release scope is defined by `make list`. The new `systemc-components` project therefore needs `artifacts.list` as a tracked manifest and should keep logs and run summaries under `work/` unless they are deliberately made release artifacts.
+
+Existing root artifacts are expensive and currently present. Validation for this extension must not use `make artifacts-clean` or default-artifact cleanup commands. The safe pattern is additive collection under `artifacts/systemc-components/` plus temporary artifact directories for any cleanup checks.
+
+Plan review found one subtle Make hazard: if a grouped SCC artifact rule copies partial outputs into final `/artifacts` and then fails, those fresh file mtimes can make a later `make collect` skip a bad run. The fix is to stage and validate every expected artifact first, and update final artifacts only after all expected executables exit successfully and the manifest is complete.
 
 
 ## Decision Log
@@ -631,13 +795,32 @@ Decision: Add `.dockerignore` to every project image context. Reason: once downl
 
 Decision: Require a clean Git worktree for releases unless `ALLOW_DIRTY=1` is set. Reason: release assets and notes should correspond to the commit targeted by the GitHub release.
 
+Decision: Add SCC as `projects/systemc-components` rather than copying the sibling `scc-experiment` repository. Reason: this repository's contract is project-local Docker/Make pipelines with ignored generated outputs, while the experiment is a proof workspace with tracked generated files and host virtual environment scripts.
+
+Decision: Use `artifacts.list` for the SCC project artifact manifest. Reason: one SCC run phase produces many files, and release safety requires `make list` to know exactly which VCD/FST/FTR files are intended assets without running the examples.
+
+Decision: Keep SCC logs, run directories, run summaries, and conversion logs under `work/` by default. Reason: the user asked for VCD/FST/FTR artifacts, and unlisted files under `artifacts/` would make the existing release script reject the tree as ambiguous.
+
+Decision: Build SCC examples during `prepare`. Reason: artifact collection cannot run until the shared CMake/Conan build has produced example executables, and treating the built tree as prepared state keeps artifact recipes focused on running examples and copying outputs.
+
+Decision: Do not run destructive artifact cleanup during the SCC extension. Reason: the existing 33 SCR1, PicoRV32, Chipyard, and `tb_complex_types` artifacts are expensive to regenerate and the user explicitly said not to delete current artifacts.
+
+Decision: Copy SCC outputs to final `/artifacts` only after full batch success and manifest validation. Reason: grouped Make targets rely on artifact mtimes, so partial final updates after a failed run can make future incremental builds incorrectly appear complete.
+
 
 ## Outcomes & Retrospective
 
-All implementation milestones are complete. Root commands run from the host and delegate to project-local pipelines. SCR1, PicoRV32, Chipyard, and `tb_complex_types` each have their own Dockerfile, Makefile, versions file, ignored download/work/build directories, and artifact list. The global devcontainer and legacy root project `.mk` files are gone.
+Original isolated-pipeline implementation milestones are complete. Root commands run from the host and delegate to project-local pipelines. SCR1, PicoRV32, Chipyard, and `tb_complex_types` each have their own Dockerfile, Makefile, versions file, ignored download/work/build directories, and artifact list. The global devcontainer and legacy root project `.mk` files are gone. The new `systemc-components` extension is planned but not yet implemented; this section must be updated again after implementation and review.
 
 Validation produced all 33 expected artifact targets: 14 SCR1 FST files, 3 PicoRV32 FST files, 12 Chipyard FST files, and 4 `tb_complex_types` waveform files. The final clean artifact run used `make artifacts-clean && make collect`, completed successfully in 134 minutes 8 seconds, and produced 33 non-empty files totaling about 1.8 GiB under `artifacts/`. `make list` and `find artifacts -type f` matched exactly. A fake-GitHub dry run of `scripts/release.sh vDRYRUN-LOCAL` staged and counted 33 release assets without stale-artifact errors.
 
 The final implementation review ran code, docs, and architecture lanes; findings about release stale artifacts, scoped clean behavior, image stamp metadata, README artifact accuracy, plan freshness, GitHub asset filename staging, Docker build context hygiene, and clean-release worktree checks were applied. A final targeted recheck of release staging reported no substantive findings.
 
 Tradeoffs remain intentional: SCR1 and Chipyard build exact Verilator v5.042 in their images, while `tb_complex_types` uses Ubuntu 24.04 packaged open-source simulators for a smaller internal fixture image. Chipyard setup is expensive but project-local and reproducible from `projects/chipyard/versions.mk`.
+
+
+## Revision Notes
+
+2026-06-05: Extended the plan for the `systemc-components` project after inspecting the sibling SCC experiment. The revision records SCC pins, the artifact manifest, the project build approach, review gates, no-delete validation rules for existing artifacts, and new milestones before implementation.
+
+2026-06-05: Applied focused plan-review findings before implementation. The plan now requires disposable cleanup validation, exact listed-vs-actual artifact comparison, README warnings for destructive artifact cleanup, atomic SCC artifact publication after batch success, an explicit expected executable inventory, stronger Docker dependency notes, clean/reset download cache semantics, submodule verification, and before/after snapshots of non-systemc artifacts. A fresh control review reported no substantive findings.
