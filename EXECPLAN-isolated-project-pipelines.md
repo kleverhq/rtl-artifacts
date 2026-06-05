@@ -365,7 +365,7 @@ Because final artifacts will live in nested directories and may share basenames,
     artifacts/scr1/max/axi/hello.fst -> scr1__max__axi__hello.fst
     artifacts/tb_complex_types/verilator/fst/waves.fst -> tb_complex_types__verilator__fst__waves.fst
 
-GitHub CLI supports custom asset names with the `file#asset-name` syntax. Use that rather than copying or renaming artifact files.
+GitHub CLI treats `file#text` as an asset display label rather than a filename rename, so do not rely on that syntax for uniqueness. Stage release assets in a temporary flat directory using the relative artifact path with `/` replaced by `__`, preferably by hardlinking and falling back to copying, then upload those staged files.
 
 The release notes should include a short version-pin section generated from `projects/*/versions.mk`. It is acceptable to include raw `NAME := value` lines grouped by project. Avoid attempting to resolve runtime SHAs from `/opt`, because `/opt` is no longer part of the architecture.
 
