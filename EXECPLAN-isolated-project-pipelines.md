@@ -41,7 +41,7 @@ The repository root currently contains these relevant tracked files:
 
 The root `Makefile` currently includes `scr1.mk`, `picorv32.mk`, and `chipyard.mk`. It has `bootstrap`, `tools-check`, `sources-check`, `pre-commit`, `check-commit`, `collect`, `release`, `clean`, and `help` targets. Those targets assume tools and sources are already installed inside the global devcontainer.
 
-The current global Dockerfile pins these upstream versions and commits:
+The current global Dockerfile pins these upstream versions and commits. It pins Chipyard by tag only; the `CHIPYARD_COMMIT` value below was resolved during planning from `refs/tags/1.13.0` with `git ls-remote` and must become a new project-local pin.
 
     RISCV_XPACK_VERSION=14.2.0-3
     VERILATOR_VERSION=v5.042
@@ -117,7 +117,7 @@ Every directory under `projects/` that produces artifacts must expose the same M
 
 `make prepare` creates `work/` from tracked files and `downloads/`. It may extract archives, copy sources, clone from a cached mirror, initialize submodules, or apply patches. It must be safe to run repeatedly.
 
-`make collect` builds all default artifacts for the project and writes them under the `ARTIFACTS_DIR` variable. When invoked by the root Makefile, `ARTIFACTS_DIR` will be an absolute path such as `<repo>/artifacts/scr1`.
+`make collect` builds all default artifacts for the project and writes them under the `ARTIFACTS_DIR` variable. Each project must define `PROJECT_NAME` and a safe standalone default such as `ARTIFACTS_DIR ?= $(abspath ../../artifacts/$(PROJECT_NAME))`, so `make -C projects/<name> collect` writes into the root artifact tree even when the root Makefile is not involved. When invoked by the root Makefile, `ARTIFACTS_DIR` will still be passed as an absolute path such as `<repo>/artifacts/scr1`.
 
 `make list` prints the artifact targets that `make collect` would produce. This target exists so humans and release scripts can inspect scope without building.
 
@@ -130,6 +130,10 @@ Every directory under `projects/` that produces artifacts must expose the same M
 `make help` prints concise project targets. It must not duplicate the README.
 
 Project Makefiles should use actual artifact files as Make targets wherever feasible. For example, `collect` in `projects/picorv32/Makefile` should depend on `$(ARTIFACTS_DIR)/test_vcd.fst`, `$(ARTIFACTS_DIR)/test_wb_vcd.fst`, and `$(ARTIFACTS_DIR)/test_ez_vcd.fst`. This preserves incremental behavior: existing artifacts are skipped unless their dependencies are newer or the user cleans them.
+
+Every project must use a standard dependency graph. `collect` depends on artifact file targets. Artifact file targets depend on a prepare stamp, an image stamp, `Makefile`, `versions.mk`, tracked source files used by the artifact, and any patch files. The image stamp depends on `Dockerfile` and `versions.mk`. The prepare stamp depends on the download stamp, `versions.mk`, patches, and tracked local sources. If `versions.mk` or patches change, `prepare` must recreate the relevant `work/src` contents instead of reusing stale sources. Artifact recipes should write through a temporary file and move it into place only after success where practical.
+
+Do not let parallel Make jobs corrupt shared upstream outputs. If a project recipe reuses one source tree and one waveform output path, serialize that project's artifact targets with `.NOTPARALLEL`, a lock, or per-artifact isolated work directories. The first migration may use serialization for SCR1, PicoRV32, and Chipyard because their current recipes reuse shared files such as `simx.vcd`, `testbench.vcd`, and simulator output directories. Root-level projects may still run independently because each project has separate `downloads/`, `work/`, and artifact directories.
 
 
 ## Root Makefile Contract
@@ -179,21 +183,26 @@ There must be no global devcontainer image. Remove `.devcontainer/Dockerfile`, `
 
 Each artifact project that needs tools must own its own `Dockerfile`. A project Dockerfile installs only the tools needed by that project. It must not install unrelated editor tools, coding agents, pre-commit tooling, Surfer, slang-server, or other convenience packages unless the project uses them to produce artifacts.
 
-Run project containers from project Makefiles with explicit volume mounts. Use this pattern unless a project needs a documented variation:
+Run project containers from project Makefiles with explicit volume mounts and writable cache locations. Use this pattern unless a project needs a documented variation:
 
     docker run --rm \
       --user "$$(id -u):$$(id -g)" \
+      -e HOME=/work/.home \
+      -e XDG_CACHE_HOME=/work/.cache \
+      -e CCACHE_DIR=/work/.ccache \
+      -e CONDA_PKGS_DIRS=/work/.conda/pkgs \
+      -e PIP_CACHE_DIR=/work/.cache/pip \
       -v "$(abspath .):/project:ro" \
       -v "$(abspath $(DOWNLOADS_DIR)):/downloads" \
       -v "$(abspath $(WORK_DIR)):/work" \
       -v "$(abspath $(ARTIFACTS_DIR)):/artifacts" \
       -w /work \
       $(IMAGE) \
-      bash -lc '<project command>'
+      bash -lc 'mkdir -p "$$HOME" "$$XDG_CACHE_HOME" "$$CCACHE_DIR" "$$CONDA_PKGS_DIRS" "$$PIP_CACHE_DIR" && <project command>'
 
-Mount the project directory read-only so recipes cannot silently mutate tracked files. Mount `downloads/`, `work/`, and the artifact output path read-write. Run with the host user ID so generated files are removable from the host without `sudo`.
+Mount the project directory read-only so recipes cannot silently mutate tracked files. Mount `downloads/`, `work/`, and the artifact output path read-write. Run with the host user ID so generated files are removable from the host without `sudo`. Set `HOME` and cache directories under `/work` so Git, Conda, ccache, Python, and build tools do not try to write to `/`, to a missing passwd entry's home directory, or to the read-only project mount.
 
-It is acceptable for `download` or `prepare` to use network access. The actual artifact recipe should prefer prepared local inputs, but this is not an absolute requirement for Chipyard if its setup flow still performs controlled dependency fetching. If a recipe requires network access after `prepare`, document that in the project README or project Makefile comment.
+It is acceptable for `download` or `prepare` to use network access. Artifact recipes should use prepared local inputs. If a project still requires controlled network access after `prepare`, document that in the project README or a project Makefile comment and explain why it cannot be moved earlier. Chipyard setup must not be treated as optional: if `env.sh`, `$$RISCV`, or benchmark binaries are required by collection, the stamp that creates them is part of `prepare`.
 
 
 ## Project-Specific Design
@@ -211,9 +220,9 @@ Create `projects/scr1/versions.mk` with at least:
 
 The SCR1 Docker image must provide Verilator, `vcd2fst`, GNU Make, Bash, Git, build-essential tooling, and the RISC-V cross compiler exposed as `riscv64-unknown-elf-*`, matching the current recipes. The upstream SCR1 source must not live in the image. It should be checked out or copied into `work/src` during `prepare`.
 
-For submodules, use a deterministic `prepare` recipe. A simple acceptable first implementation is to clone recursively into `work/src`, checkout `SCR1_COMMIT`, run `git submodule update --init --recursive`, and then apply any tracked patches. A more cached implementation may keep a mirror under `downloads/`, but correctness is more important than cache cleverness in the first migration.
+For submodules, use a deterministic `download` and `prepare` pair. `download` should populate `downloads/src` or an equivalent cache with a complete SCR1 checkout at `SCR1_COMMIT`, including required submodules. `prepare` should recreate `work/src` from that cache, verify `git rev-parse HEAD` matches `SCR1_COMMIT`, run or verify `git submodule update --init --recursive`, and then apply any tracked patches. Do not clone directly inside artifact recipes; that hides source setup behind collection and makes `make download` ceremonial, which is how tiny maintenance goblins get tenure.
 
-Each SCR1 artifact target should run the upstream `make run_verilator_wf` command inside the container and copy or convert the resulting waveform into `/artifacts/<name>.fst`. Preserve the current `SCR1_COLLECT_TRACE ?= 0` and benchmark linker flags behavior.
+Each SCR1 artifact target should run the upstream `make run_verilator_wf` command inside the container and copy or convert the resulting waveform into `/artifacts/<name>.fst`. Preserve the current `SCR1_COLLECT_TRACE ?= 0` and benchmark linker flags behavior. Because upstream SCR1 writes the waveform to a shared path under its build directory, serialize SCR1 artifact targets unless the implementation gives each artifact its own isolated work copy.
 
 Suggested final artifact paths are:
 
@@ -244,7 +253,7 @@ Create `projects/picorv32/versions.mk` with at least:
     PICORV32_COMMIT := 87c89acc18994c8cf9a2311e871818e87d304568
     RISCV_XPACK_VERSION := 14.2.0-3
 
-The PicoRV32 Docker image must provide GNU Make, Bash, Git, Icarus or whatever the upstream Make targets require, and the RISC-V cross compiler exposed as `riscv64-unknown-elf-*`. If the upstream Make target emits VCD, install `gtkwave` or another package that provides `vcd2fst` so the project can keep producing `.fst` artifacts.
+The PicoRV32 Docker image must provide GNU Make, Bash, Git, Icarus or whatever the upstream Make targets require, and the RISC-V cross compiler exposed as `riscv64-unknown-elf-*`. If the upstream Make target emits VCD, install `gtkwave` or another package that provides `vcd2fst` so the project can keep producing `.fst` artifacts. Because the current upstream targets reuse `testbench.vcd`, serialize PicoRV32 artifact targets unless the implementation gives each target an isolated source/work copy.
 
 Suggested final artifact paths are:
 
@@ -266,9 +275,13 @@ Create `projects/chipyard/versions.mk` with at least:
 
 The Chipyard Docker image may be heavier than the other images, but it must be isolated to Chipyard. It should install system dependencies, Miniforge or equivalent environment support, Verilator if Chipyard does not provide an adequate one, and any packages required by `./build-setup.sh riscv-tools --skip-ctags --skip-firesim --skip-marshal`. The Chipyard source tree must live in `work/src`, not `/opt/chipyard`.
 
-The `prepare` target should clone or copy Chipyard into `work/src`, checkout `CHIPYARD_COMMIT`, initialize required submodules, and run the Chipyard setup command if needed. If this is too expensive to repeat, use stamp files under `.build/` and make them depend on `versions.mk`, `Dockerfile`, and any patch files.
+The `prepare` target must clone or copy Chipyard into `/work/src`, checkout `CHIPYARD_COMMIT`, initialize required submodules, and run `./build-setup.sh riscv-tools --skip-ctags --skip-firesim --skip-marshal` or an equivalent setup step that creates `/work/src/env.sh`, the `$$RISCV` environment, and the benchmark binaries used by collection. Because this is expensive, use stamp files under `.build/` and make them depend on `versions.mk`, `Dockerfile`, and any patch files. The stamp must represent a usable Chipyard environment, not merely a cloned source tree.
 
-Each Chipyard artifact target should source `work/src/env.sh`, run the existing `make -C work/src/sims/verilator CONFIG=<config> run-binary-debug USE_FST=1 BINARY=<benchmark>` command inside the container, and copy the resulting `.fst` to `/artifacts/<config>/<benchmark>.fst`.
+Each Chipyard artifact target should source `/work/src/env.sh`, run the existing simulation command from `/work/src/sims/verilator`, pass the full benchmark binary path, and copy the resulting `.fst` to `/artifacts/<config>/<benchmark>.fst`. The command shape should be:
+
+    bash -lc 'set -e; source /work/src/env.sh; make -C /work/src/sims/verilator CONFIG="<config>" run-binary-debug USE_FST=1 BINARY="$$RISCV/riscv64-unknown-elf/share/riscv-tests/benchmarks/<benchmark>.riscv"'
+
+Because Chipyard simulator output directories are shared by config and benchmark, serialize Chipyard artifact targets unless the implementation provides isolated simulator output directories.
 
 Suggested final artifact paths are:
 
@@ -291,14 +304,14 @@ Move the existing tracked `tb_complex_types/` directory to `projects/tb_complex_
 
 Create `projects/tb_complex_types/Dockerfile` for the open-source default flow. It should install Verilator, Icarus Verilog, `gtkwave` or another provider of `vcd2fst`, GNU Make, Bash, and build-essential tooling. It should not install Questa, VCS, Xcelium, or Verdi because those are vendor/licensed tools and cannot be assumed in the default Docker flow.
 
-The default `collect` target should build the open-source artifacts that can run in the project image:
+The default `collect` target should build the open-source artifacts that can run in the project image, but do not assume Icarus works until it is smoke-tested after the move. First validate Verilator VCD and FST. Then validate Icarus VCD and FST; if Icarus fails on classes, dynamic arrays, queues, unpacked structs, or other unsupported SystemVerilog constructs, gate those constructs with `ifdef ICARUS` or keep Icarus as an optional target until the source is fixed. Once validated, default `collect` should produce:
 
     artifacts/tb_complex_types/verilator/vcd/waves.vcd
     artifacts/tb_complex_types/verilator/fst/waves.fst
     artifacts/tb_complex_types/icarus/vcd/waves.vcd
     artifacts/tb_complex_types/icarus/fst/waves.fst
 
-Keep optional Make targets for Questa, VCS, Xcelium, and FSDB only if they remain clearly documented as host/vendor-tool paths outside the default Docker artifact flow. Do not include them in default `collect`.
+Keep optional Make targets for Questa, VCS, Xcelium, and FSDB only if they remain clearly documented as host/vendor-tool paths outside the default Docker artifact flow. Do not include them in default `collect` until their tools are available and their source compatibility has been verified.
 
 Change generated run directories to live under `work/`, not beside tracked source files. For example, use `WORK_DIR ?= work` and create `$(WORK_DIR)/run-verilator-fst` instead of `run-verilator-fst` at the project root. Then `projects/tb_complex_types/.gitignore` can be removed if the root ignore patterns cover all generated directories, or it can remain as a small local guard if useful.
 
@@ -370,7 +383,7 @@ Acceptance for this milestone is that reading `AGENTS.md` and `projects/AGENTS.m
 
 ### Milestone 3: Migrate tb_complex_types as the first project
 
-Move `tb_complex_types/` to `projects/tb_complex_types/` using `git mv`. Add its project Dockerfile and update its Makefile so generated run directories live under `work/`. Implement the standard project targets. Make `download` a no-op that creates `downloads/`. Make default `collect` produce only the open-source Verilator and Icarus VCD/FST artifacts.
+Move `tb_complex_types/` to `projects/tb_complex_types/` using `git mv`. Add its project Dockerfile and update its Makefile so generated run directories live under `work/`. Implement the standard project targets. Make `download` a no-op that creates `downloads/`. Validate Verilator first, then validate Icarus and fix or gate unsupported SystemVerilog constructs before including Icarus in default `collect`.
 
 Run:
 
@@ -378,12 +391,18 @@ Run:
     make collect-tb_complex_types
     make list-tb_complex_types
 
-Expected observable result:
+Expected observable result before cleanup:
 
     artifacts/tb_complex_types/verilator/vcd/waves.vcd exists
     artifacts/tb_complex_types/verilator/fst/waves.fst exists
     artifacts/tb_complex_types/icarus/vcd/waves.vcd exists
     artifacts/tb_complex_types/icarus/fst/waves.fst exists
+
+Then check the non-build contract targets:
+
+    make -C projects/tb_complex_types -n shell
+    make -C projects/tb_complex_types clean ARTIFACTS_DIR="$PWD/artifacts/tb_complex_types"
+    make -C projects/tb_complex_types distclean ARTIFACTS_DIR="$PWD/artifacts/tb_complex_types"
 
 This milestone proves the new project contract using a small internal project before touching the heavier upstream projects. It is the test bench for the architecture, in the useful sense rather than the fashionable diagram sense.
 
@@ -407,12 +426,13 @@ Expected observable result:
 
 Create `projects/scr1/` with `Makefile`, `Dockerfile`, and `versions.mk`. Move the logic from `scr1.mk` into the project Makefile and adapt it to use the project Docker image, `downloads/`, `work/`, and `/artifacts`. Remove `scr1.mk` only after the project target works.
 
-Run a small first proof before the full SCR1 collect:
+Run a small first proof before the full SCR1 collect. Use an absolute artifact target so the command matches the `ARTIFACTS_DIR` contract:
 
     make image-scr1
-    make -C projects/scr1 artifacts/max/axi/hello.fst ARTIFACTS_DIR=$(pwd)/artifacts/scr1
+    ARTDIR="$PWD/artifacts/scr1"
+    make -C projects/scr1 "$ARTDIR/max/axi/hello.fst" ARTIFACTS_DIR="$ARTDIR"
 
-If the exact direct file target path differs in the final Makefile, run the equivalent target printed by `make list-scr1`. Then run:
+If the exact direct file target path differs in the final Makefile, run the equivalent absolute target printed by `make list-scr1`. Then run:
 
     make collect-scr1
 
@@ -420,14 +440,15 @@ Expected observable result is that all fourteen SCR1 `.fst` artifacts exist unde
 
 ### Milestone 6: Migrate Chipyard
 
-Create `projects/chipyard/` with `Makefile`, `Dockerfile`, and `versions.mk`. Move the logic from `chipyard.mk` into the project Makefile and adapt it to use `work/src` instead of `/opt/chipyard`. Remove `chipyard.mk` only after at least one Chipyard artifact target works.
+Create `projects/chipyard/` with `Makefile`, `Dockerfile`, and `versions.mk`. Move the logic from `chipyard.mk` into the project Makefile and adapt it to use `/work/src` inside the container instead of `/opt/chipyard`. Remove `chipyard.mk` only after at least one Chipyard artifact target works.
 
-Start with one benchmark because Chipyard is expensive:
+Start with one benchmark because Chipyard is expensive. Use an absolute artifact target so the command matches the `ARTIFACTS_DIR` contract:
 
     make image-chipyard
-    make -C projects/chipyard artifacts/DualRocketConfig/dhrystone.fst ARTIFACTS_DIR=$(pwd)/artifacts/chipyard
+    ARTDIR="$PWD/artifacts/chipyard"
+    make -C projects/chipyard "$ARTDIR/DualRocketConfig/dhrystone.fst" ARTIFACTS_DIR="$ARTDIR"
 
-If the exact direct file target path differs in the final Makefile, run the equivalent target printed by `make list-chipyard`. Then run the full project collect if the environment has enough time and disk:
+If the exact direct file target path differs in the final Makefile, run the equivalent absolute target printed by `make list-chipyard`. Then run the full project collect if the environment has enough time and disk:
 
     make collect-chipyard
 
@@ -490,7 +511,7 @@ Expected final state:
 
 Use cheap validation before expensive validation. First validate Make syntax, help output, root delegation, ignore patterns, and the internal `tb_complex_types` project. Then validate PicoRV32, then SCR1, and finally Chipyard.
 
-For every migrated project, test these commands:
+For every migrated project, test these commands. Verify artifact existence after `collect` and before any cleanup. Run cleanup checks either after recording that evidence or with a disposable artifact directory so final validation artifacts are not accidentally erased.
 
     make -C projects/<name> help
     make -C projects/<name> list
@@ -498,6 +519,9 @@ For every migrated project, test these commands:
     make -C projects/<name> download
     make -C projects/<name> prepare
     make -C projects/<name> collect ARTIFACTS_DIR=$(pwd)/artifacts/<name>
+    make -C projects/<name> -n shell
+    make -C projects/<name> clean ARTIFACTS_DIR=$(pwd)/artifacts/<name>
+    make -C projects/<name> distclean ARTIFACTS_DIR=$(pwd)/artifacts/<name>
 
 From the root, test:
 
@@ -505,6 +529,9 @@ From the root, test:
     make tools-check
     make list
     make collect-<name>
+    make clean-<name>
+    make distclean-<name>
+    make -n shell-<name>
 
 For generated artifacts, verify files exist and have non-zero size:
 
@@ -520,7 +547,9 @@ Use `git status --short --ignored` to confirm that `artifacts/`, `projects/*/dow
 - [x] Confirmed `tb_complex_types` is tracked as source/docs only; generated `run-*` directories are ignored or untracked.
 - [x] Decided not to introduce a tracked `Justfile`.
 - [x] Authored this ExecPlan as the handoff document for implementation.
-- [ ] Review this ExecPlan with focused reviewers and update it for any substantive findings.
+- [x] Ran focused architecture, execution-plan, and build-feasibility reviews on the initial plan.
+- [x] Updated the plan for reviewer findings about stale artifacts, writable container homes/caches, project `ARTIFACTS_DIR` defaults, SCR1 download semantics, Chipyard setup and paths, target serialization, Icarus validation, and cleanup/shell validation.
+- [ ] Run a final control review pass on the updated plan.
 - [ ] Implement Milestone 1.
 - [ ] Implement Milestone 2.
 - [ ] Implement Milestone 3.
@@ -540,6 +569,8 @@ The current release script reads SCR1 and PicoRV32 pins from `.devcontainer/Dock
 
 Nested artifact paths are clearer than current long flat filenames, but GitHub release assets require unique asset names. The release script must flatten relative paths at upload time or it will collide on names like `hello.fst` and `waves.fst`.
 
+Reviewers caught several implementation traps that were easy to miss in a high-level architecture: SCR1 and PicoRV32 reuse shared waveform output paths, Chipyard setup creates required runtime state and benchmark binaries, containers running as host UID still need writable `HOME` and cache paths, and project-local `ARTIFACTS_DIR` defaults must point back to the root artifact tree for standalone project runs.
+
 
 ## Decision Log
 
@@ -558,6 +589,10 @@ Decision: Create concise root and `projects/` breadcrumbs. Reason: agents need d
 Decision: Migrate `tb_complex_types` as a first-class project. Reason: it is an internal artifact producer with no external upstream repository, and losing it would drop useful waveform fixture coverage.
 
 Decision: Store upstream version pins in each project's `versions.mk`. Reason: version ownership belongs with the project that consumes the upstream source, and release notes can read those files without depending on `/opt` or a removed Dockerfile.
+
+Decision: Serialize project artifact targets unless they use isolated per-artifact work directories. Reason: current upstream recipes for SCR1, PicoRV32, and Chipyard reuse shared output paths, so parallel artifact targets can race and copy the wrong waveform.
+
+Decision: Project Docker runs must set writable `HOME` and cache directories under `/work`. Reason: running containers as the host UID avoids root-owned files, but Git, Conda, ccache, and Python still need writable state paths.
 
 
 ## Outcomes & Retrospective
