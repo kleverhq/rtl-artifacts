@@ -471,7 +471,7 @@ prints nothing, and repository documentation no longer instructs users to use a 
 
 ### Milestone 8: Update README and release flow
 
-Rewrite `README.md` to match the host-driven project architecture. Update `scripts/release.sh` to collect artifacts incrementally, flatten nested asset names with the `file#asset-name` GitHub CLI syntax, and generate release notes from `projects/*/versions.mk`.
+Rewrite `README.md` to match the host-driven project architecture. Update `scripts/release.sh` to collect artifacts incrementally, stage nested artifacts under temporary flat filenames with `/` replaced by `__`, and generate release notes from `projects/*/versions.mk`.
 
 Run non-destructive validation:
 
