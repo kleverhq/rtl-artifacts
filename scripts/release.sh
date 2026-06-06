@@ -156,7 +156,6 @@ done
   echo
   echo '## Artifacts'
   echo "- Uploaded files: ${#artifacts[@]}"
-  echo "- Source directory: \`$artifacts_dir_abs/\`"
 } >"$notes_file"
 
 echo "Creating GitHub release '$version' and uploading ${#artifacts[@]} assets..."
