@@ -1,51 +1,74 @@
-# systemc-components
+# SystemC-Components artifact pipeline
 
-Builds the MINRES SystemC-Components examples and collects waveform and transaction-recording artifacts.
+This project builds waveform and transaction-recording artifacts from the pinned MINRES SystemC-Components upstream source tree. It is isolated from the repository root: the project owns its Docker image, source download cache, prepared work tree, and generated artifacts.
 
-## What it produces
+`prepare` is intentionally heavy. It configures and builds SCC examples using CMake and Conan inside the project Docker image, and first-time runs can populate a large Conan cache.
 
-Default `make collect` runs the pinned SCC example executables and publishes only the files listed in `artifacts.list` under `artifacts/systemc-components/`:
+## Source and tools
 
-- native VCD and FST waveforms under `waves/`
-- native SCC FTR transaction recordings under `ftr/`
-- successful VCD/FST conversions under `converted/`
+Version pins live in `versions.mk`:
 
-Logs, per-example run directories, run summaries, conversion logs, and staging files stay under `projects/systemc-components/work/` and are not release artifacts.
+- `SYSTEMC_COMPONENTS_URL`, `SYSTEMC_COMPONENTS_VERSION`, and `SYSTEMC_COMPONENTS_COMMIT` select the upstream SCC source.
+- `SYSTEMC_COMPONENTS_AXI_CHI_COMMIT` and `SYSTEMC_COMPONENTS_LWTR4SC_COMMIT` verify pinned nested submodules.
+- `CONAN_VERSION` selects the Conan release installed in the project image.
+- `SCC_BUILD_PRESET` selects the CMake preset used for the SCC build.
+- `SCC_EXAMPLE_TIMEOUT_SECONDS` controls the per-example runtime timeout.
 
-## Version
+Generated state is ignored by Git:
 
-- Upstream repository: `https://github.com/Minres/SystemC-Components.git`
-- Upstream tag: `2026.05`
-- Upstream commit: `b990fb032cad58478348b5bf4acd0052fc01d3f7`
-- Conan version in the project image: `2.29.0`
-- CMake preset: `Release`
+- `downloads/` stores the upstream clone cache.
+- `work/` stores the prepared source tree, Conan cache, SCC build output, per-example run directories, logs, run summaries, conversion logs, and staging files.
+- `.build/` stores Make stamp files.
+- `../../artifacts/systemc-components/` stores collected VCD/FST/FTR artifacts when using the default artifact directory.
 
-The prepared work tree applies `patches/scc-include-cxs-channel.patch` before building. The patch wires the `cxs-channel` example into the upstream example build and fixes two runtime issues observed while generating artifacts.
+The prepared work tree applies `patches/scc-include-cxs-channel.patch` before building. The patch wires the `cxs-channel` example into the upstream example build and fixes runtime issues observed while generating artifacts.
 
-## Common commands
+## Commands
 
-Run from the repository root:
+Build the project image:
 
-```sh
-make image-systemc-components
-make download-systemc-components
-make prepare-systemc-components
-make collect-systemc-components
-make list-systemc-components
+```bash
+make image
 ```
 
-Run from this directory:
+Fetch the pinned SystemC-Components source and submodules:
 
-```sh
-make image
+```bash
 make download
+```
+
+Prepare a writable work tree, apply the local patch, and build SCC examples:
+
+```bash
 make prepare
+```
+
+Run the SCC examples and collect all default artifacts:
+
+```bash
 make collect
+```
+
+List artifact targets:
+
+```bash
 make list
 ```
 
-`prepare` is intentionally heavy: it configures and builds SCC examples using CMake and Conan inside the project Docker image. Conan cache and build output live under `work/`.
+Open a debug shell inside the project image:
 
-## Safety note
+```bash
+make shell
+```
 
-Do not use root `make artifacts-clean` when preserving existing generated artifacts. That target removes the whole root artifact tree, including expensive artifacts from other projects. Normal incremental collection for this project only writes under `artifacts/systemc-components/`.
+## Artifact scope
+
+Default collection publishes only the files listed in `artifacts.list`:
+
+- native VCD and FST waveforms under `artifacts/systemc-components/waves/`
+- native SCC FTR transaction recordings under `artifacts/systemc-components/ftr/`
+- successful VCD/FST conversions under `artifacts/systemc-components/converted/`
+
+Logs, per-example run directories, run summaries, conversion logs, and staging files stay under `work/` and are not release artifacts.
+
+The project serializes artifact targets because the SCC example run uses one shared prepared build tree and a batch runner publishes the manifest as a single validated artifact set.
