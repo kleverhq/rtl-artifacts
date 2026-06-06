@@ -1,4 +1,4 @@
-# Agent Guide (rtl-artifacts)
+# rtl-artifacts Repo Guide
 
 This repository is an RTL artifact workspace. Root automation orchestrates isolated project pipelines; project-specific build logic belongs under `projects/<name>/`.
 
@@ -6,8 +6,6 @@ This repository is an RTL artifact workspace. Root automation orchestrates isola
 
 - Use root `Makefile` targets as the public command surface.
 - Keep the root `Makefile` small: host checks, project delegation, release flow.
-- Do not add a tracked `Justfile` or restore pre-commit hooks without a new design decision.
-- Do not rely on a devcontainer or global `/opt` source trees; project Docker images own their tools.
 - Generated outputs live in ignored `artifacts/`, `projects/*/downloads/`, `projects/*/work/`, and `projects/*/.build/`.
 - Do not commit generated artifacts, downloaded sources, build outputs, credentials, or tool caches.
 
@@ -16,7 +14,6 @@ This repository is an RTL artifact workspace. Root automation orchestrates isola
 - `Makefile` is the host entry point. It checks host tools, delegates root targets to projects, lists expected artifacts, and calls the release script.
 - `README.md` is the user-facing overview, quick start, project summary, artifact inventory, and brief release note.
 - `scripts/release.sh` creates GitHub releases from the generated artifact tree.
-- `EXECPLAN-isolated-project-pipelines.md` is the living implementation plan for the isolated project pipeline work.
 - `projects/AGENTS.md` defines the shared contract for project subdirectories.
 - `projects/scr1/` builds SCR1 artifacts from a pinned upstream checkout.
 - `projects/picorv32/` builds PicoRV32 artifacts from a pinned upstream checkout.
@@ -46,24 +43,6 @@ Every project directory should own these files or targets unless there is a docu
 ## Release Procedure
 
 Use `make release VERSION=vX.Y.Z` only when release assets are ready and GitHub CLI is authenticated.
-
-The release script performs these steps:
-
-1. Verifies required commands are available: `gh`, `make`, `git`, `awk`, `find`, `sort`, and `mktemp`.
-2. Verifies `gh auth status` succeeds.
-3. Verifies an `origin` remote exists, unless `GH_REPO` is set.
-4. Rejects an already existing GitHub release with the requested version.
-5. Reads project version notes from every `projects/*/versions.mk` file.
-6. Requires a clean Git worktree by default. Set `ALLOW_DIRTY=1` only for deliberate local dry runs.
-7. Runs `make collect` incrementally with the selected `ARTIFACTS_DIR`, defaulting to `artifacts/`.
-8. Builds the expected artifact list with `make list`.
-9. Fails if any listed artifact is missing.
-10. Fails if any extra unlisted file exists under the artifact directory, because stale files make releases ambiguous.
-11. Stages release assets in a temporary flat directory by replacing `/` with `__` in artifact paths.
-12. Fails on duplicate flattened asset names.
-13. Creates the GitHub release with one uploaded asset per artifact file.
-
-Nested artifact paths become flat release asset names. For example, `artifacts/chipyard/DualRocketConfig/dhrystone.fst` is uploaded as `chipyard__DualRocketConfig__dhrystone.fst`.
 
 Before a real release, run:
 

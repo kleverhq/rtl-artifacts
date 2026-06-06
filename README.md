@@ -1,6 +1,6 @@
 # rtl-artifacts
 
-`rtl-artifacts` builds a reproducible set of waveform and transaction-recording files from several RTL and SystemC projects. It exists to provide real VCD, FST, and FTR samples for waveform viewers, converters, parsers, regression tests, and tool-behavior comparisons.
+`rtl-artifacts` builds a reproducible set of artifacts from several RTL projects. It exists to provide real VCD, FST,FTR, etc. samples for waveform viewers, converters, parsers, regression tests, and tool-behavior comparisons.
 
 Each project is isolated under `projects/<name>/` and owns its own Docker image, source cache, build work tree, and artifact recipes. The generated files are written under `artifacts/` and are not tracked by Git.
 
