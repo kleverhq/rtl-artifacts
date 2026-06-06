@@ -1,0 +1,61 @@
+diff --git a/examples/CMakeLists.txt b/examples/CMakeLists.txt
+index d8e138b5..0765244c 100644
+--- a/examples/CMakeLists.txt
++++ b/examples/CMakeLists.txt
+@@ -12,6 +12,7 @@ if(NOT USE_CWR_SYSTEMC)
+     add_subdirectory(lwtr)
+     add_subdirectory(lwtr4tlm2)
+     add_subdirectory(lwtr4axi)
++    add_subdirectory(cxs-channel)
+     if(WITH_SCP4SCC)
+         add_subdirectory(scp)
+     endif()
+diff --git a/examples/cxs-channel/CMakeLists.txt b/examples/cxs-channel/CMakeLists.txt
+index 64835a85..c417ff80 100644
+--- a/examples/cxs-channel/CMakeLists.txt
++++ b/examples/cxs-channel/CMakeLists.txt
+@@ -1,4 +1,5 @@
+ project (cxs_channel)
+ 
+ add_executable(${PROJECT_NAME} sc_main.cpp)
++target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/src)
+ target_link_libraries (${PROJECT_NAME} LINK_PUBLIC scc::interfaces scc-sysc)
+diff --git a/examples/cxs-channel/sc_main.cpp b/examples/cxs-channel/sc_main.cpp
+index 036226f2..9e162217 100644
+--- a/examples/cxs-channel/sc_main.cpp
++++ b/examples/cxs-channel/sc_main.cpp
+@@ -38,6 +38,9 @@ struct testbench : public sc_core::sc_module,
+         tsck(*this);
+         isck(tx.tsck);
+         tx.clk_i(clk);
++        tx.rst_i(rst);
++        cxs_chan.tx_clk_i(clk);
++        cxs_chan.rx_clk_i(clk);
+         tx.isck(cxs_chan.tsck);
+         cxs_chan.isck(rx.tsck);
+         rx.clk_i(clk);
+@@ -45,7 +48,11 @@ struct testbench : public sc_core::sc_module,
+         rx.isck(tsck);
+         SC_HAS_PROCESS(testbench);
+         SC_THREAD(run);
++        tx.clock_period.set_value(1_ns);
+         cxs_chan.channel_delay.set_value(100_ns);
++        cxs_chan.tx_clock_period.set_value(1_ns);
++        cxs_chan.rx_clock_period.set_value(1_ns);
++        rx.clock_period.set_value(1_ns);
+         rx.max_credit.set_value(15);
+     }
+ 
+diff --git a/examples/scc-tlm_target_bfs/sc_main.cpp b/examples/scc-tlm_target_bfs/sc_main.cpp
+index ce8a6070..9ef5ce78 100644
+--- a/examples/scc-tlm_target_bfs/sc_main.cpp
++++ b/examples/scc-tlm_target_bfs/sc_main.cpp
+@@ -234,7 +234,7 @@ int sc_main(int argc, char* argv[]) {
+               scc::LogConfig()
+               .logLevel(static_cast<scc::log>(7))
+               .logAsync(false)
+-              .dontCreateBroker(true)
++              .dontCreateBroker(false)
+               .coloredOutput(true));
+     // clang-format off
+ 

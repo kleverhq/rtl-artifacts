@@ -1,0 +1,5 @@
+SCR1_URL := https://github.com/syntacore/scr1.git
+SCR1_COMMIT := ebb5e3551a9d93c0ee95f0b767dd878b8927e702
+TOOL_IMAGE_BASE := ubuntu:24.04
+VERILATOR_VERSION := v5.042
+RISCV_XPACK_VERSION := 14.2.0-3

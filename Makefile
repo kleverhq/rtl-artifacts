@@ -1,62 +1,88 @@
+SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-HELP_MAKEFILES ?= Makefile scr1.mk picorv32.mk chipyard.mk
+PROJECTS ?= scr1 picorv32 chipyard tb_complex_types systemc-components
+ARTIFACTS_DIR ?= artifacts
+ARTIFACTS_ROOT := $(abspath $(ARTIFACTS_DIR))
 
-include scr1.mk
-include picorv32.mk
-include chipyard.mk
+.PHONY: help tools-check \
+        images image-% \
+        download download-% \
+        prepare prepare-% \
+        collect collect-% \
+        list list-% \
+        shell-% \
+        clean clean-% artifacts-clean \
+        distclean distclean-% \
+        release
 
-.PHONY: bootstrap tools-check sources-check pre-commit check-commit collect release clean help
-
-.NOTPARALLEL: collect scr1 picorv32 chipyard
-
-## Bootstrap workspace (tools + hooks + external source checks)
-bootstrap: sources-check tools-check
-	pre-commit install --hook-type pre-commit --hook-type commit-msg
-
-## Print versions of required tools
-tools-check:
-	verilator --version
-	gtkwave --version
-	surfer --version
-	slang-server --version
-	riscv64-unknown-elf-gcc --version
-	riscv64-unknown-elf-objcopy --version
-	iverilog -V
-	pre-commit --version
-	cz version
-
-## Verify external RTL source trees from image
-sources-check:
-	@[ -d "$(SCR1_DIR)" ] || { echo "Missing SCR1 sources at $(SCR1_DIR)"; exit 1; }
-	@[ -d "$(PICORV32_DIR)" ] || { echo "Missing PicoRV32 sources at $(PICORV32_DIR)"; exit 1; }
-	@[ -f "$(CHIPYARD_ENV_SH)" ] || { echo "Missing Chipyard env.sh at $(CHIPYARD_ENV_SH)"; exit 1; }
-	@[ -w "$(SCR1_DIR)" ] || { echo "SCR1 sources are not writable: $(SCR1_DIR)"; exit 1; }
-	@[ -w "$(PICORV32_DIR)" ] || { echo "PicoRV32 sources are not writable: $(PICORV32_DIR)"; exit 1; }
-	@[ -w "$(CHIPYARD_DIR)" ] || { echo "Chipyard sources are not writable: $(CHIPYARD_DIR)"; exit 1; }
-
-## Run pre-commit hooks on all files
-pre-commit:
-	pre-commit run --all-files
-
-## Check commit messages
-check-commit:
-	cz check --commit-msg-file "$$(git rev-parse --git-path COMMIT_EDITMSG)"
-
-## Collect all artifacts
-collect: scr1 picorv32 chipyard
-
-## Create GitHub release with artifacts (set VERSION=vX.Y.Z)
-release:
-	@[ -n "$(VERSION)" ] || { echo "Usage: make release VERSION=vX.Y.Z"; exit 1; }
-	./scripts/release.sh "$(VERSION)"
-
-## Clean up
-clean:
-	rm -rf $(ARTIFACTS_DIR)
-	$(MAKE) -C $(SCR1_DIR) clean
-	$(MAKE) -C $(PICORV32_DIR) clean
-
-## Show targets
 help:
-	@awk 'BEGIN{tabstop=8;targetcol=32} /^##/{desc=$$0;sub(/^##[ ]*/,"",desc);next} /^[a-zA-Z0-9_-]+:/{name=$$1;sub(/:.*/,"",name);col=length(name);pos=col;ntabs=0;while(pos<targetcol){ntabs++;pos=int(pos/tabstop+1)*tabstop}printf "%s",name;for(i=0;i<ntabs;i++)printf "\t\t\t";printf "%s\n",desc;desc=""}' $(HELP_MAKEFILES)
+	@printf '%s\n' 'Targets:'
+	@printf '  %-24s %s\n' 'make tools-check' 'Check host prerequisites only.'
+	@printf '  %-24s %s\n' 'make images' 'Build images for PROJECTS.'
+	@printf '  %-24s %s\n' 'make image-<project>' 'Build one project image.'
+	@printf '  %-24s %s\n' 'make download' 'Populate downloads for PROJECTS.'
+	@printf '  %-24s %s\n' 'make prepare' 'Prepare work trees for PROJECTS.'
+	@printf '  %-24s %s\n' 'make collect' 'Collect artifacts for PROJECTS.'
+	@printf '  %-24s %s\n' 'make collect-<project>' 'Collect one project.'
+	@printf '  %-24s %s\n' 'make list' 'List artifact targets for PROJECTS.'
+	@printf '  %-24s %s\n' 'make shell-<project>' 'Open a debug shell in one project image.'
+	@printf '  %-24s %s\n' 'make clean' 'Remove project work/build output and project artifacts.'
+	@printf '  %-24s %s\n' 'make artifacts-clean' 'Destructively remove the whole artifacts directory.'
+	@printf '  %-24s %s\n' 'make distclean' 'Run clean and remove downloads too.'
+	@printf '  %-24s %s\n' 'make release VERSION=vX.Y.Z' 'Create a GitHub release from artifacts.'
+	@printf '\nPROJECTS=%s\nARTIFACTS_DIR=%s\n' '$(PROJECTS)' '$(ARTIFACTS_DIR)'
+
+tools-check:
+	@missing=0; \
+	for cmd in docker make git bash find sort awk xargs; do \
+		if command -v "$$cmd" >/dev/null 2>&1; then \
+			printf '%-8s %s\n' "$$cmd" "$$(command -v "$$cmd")"; \
+		else \
+			echo "missing required host tool: $$cmd"; missing=1; \
+		fi; \
+	done; \
+	if command -v gh >/dev/null 2>&1; then \
+		printf '%-8s %s (release only)\n' gh "$$(command -v gh)"; \
+	else \
+		echo 'note: gh not found; required only for make release'; \
+	fi; \
+	exit $$missing
+
+images: $(PROJECTS:%=image-%)
+image-%:
+	@$(MAKE) --no-print-directory -C "projects/$*" image ARTIFACTS_DIR="$(ARTIFACTS_ROOT)/$*"
+
+download: $(PROJECTS:%=download-%)
+download-%:
+	@$(MAKE) --no-print-directory -C "projects/$*" download ARTIFACTS_DIR="$(ARTIFACTS_ROOT)/$*"
+
+prepare: $(PROJECTS:%=prepare-%)
+prepare-%:
+	@$(MAKE) --no-print-directory -C "projects/$*" prepare ARTIFACTS_DIR="$(ARTIFACTS_ROOT)/$*"
+
+collect: $(PROJECTS:%=collect-%)
+collect-%:
+	@$(MAKE) --no-print-directory -C "projects/$*" collect ARTIFACTS_DIR="$(ARTIFACTS_ROOT)/$*"
+
+list: $(PROJECTS:%=list-%)
+list-%:
+	@$(MAKE) --no-print-directory -C "projects/$*" list ARTIFACTS_DIR="$(ARTIFACTS_ROOT)/$*"
+
+shell-%:
+	@$(MAKE) --no-print-directory -C "projects/$*" shell ARTIFACTS_DIR="$(ARTIFACTS_ROOT)/$*"
+
+clean: $(PROJECTS:%=clean-%)
+clean-%:
+	@$(MAKE) --no-print-directory -C "projects/$*" clean ARTIFACTS_DIR="$(ARTIFACTS_ROOT)/$*"
+
+artifacts-clean:
+	rm -rf "$(ARTIFACTS_ROOT)"
+
+distclean: clean $(PROJECTS:%=distclean-%)
+distclean-%:
+	@$(MAKE) --no-print-directory -C "projects/$*" distclean ARTIFACTS_DIR="$(ARTIFACTS_ROOT)/$*"
+
+release:
+	@[ -n "$(VERSION)" ] || { echo 'Usage: make release VERSION=vX.Y.Z'; exit 1; }
+	ARTIFACTS_DIR="$(ARTIFACTS_ROOT)" ./scripts/release.sh "$(VERSION)"

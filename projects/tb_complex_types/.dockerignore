@@ -1,0 +1,11 @@
+downloads/
+work/
+.build/
+*.fst
+*.vcd
+*.vpd
+*.wlf
+*.fsdb
+*.shm/
+run-*/
+__pycache__/

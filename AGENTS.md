@@ -1,44 +1,62 @@
-# Agent Guide (rtl-artifacts)
+# rtl-artifacts Repo Guide
 
-This repository is an RTL artifact workspace, not an application codebase.
-Use it to keep heavy HDL tooling, upstream RTL sources, and generated fixtures
-in one place.
+This repository is an RTL artifact workspace. Root automation orchestrates isolated project pipelines; project-specific build logic belongs under `projects/<name>/`.
 
-## Scope and Intent
+## Local Guidance
 
-- Keep this repo focused on deterministic artifact production workflows.
-- Prefer updating root automation (`Makefile`, container setup, hooks) over
-  adding ad-hoc scripts.
+- Use root `Makefile` targets as the public command surface.
+- Keep the root `Makefile` small: host checks, project delegation, release flow.
+- Generated outputs live in ignored `artifacts/`, `projects/*/downloads/`, `projects/*/work/`, and `projects/*/.build/`.
+- Do not commit generated artifacts, downloaded sources, build outputs, credentials, or tool caches.
 
-## Main Commands
+## Repository Map
 
-Use `Makefile` targets as the primary interface:
+- `Makefile` is the host entry point. It checks host tools, delegates root targets to projects, lists expected artifacts, and calls the release script.
+- `README.md` is the user-facing overview, quick start, project summary, artifact inventory, and brief release note.
+- `scripts/release.sh` creates GitHub releases from the generated artifact tree.
+- `projects/AGENTS.md` defines the shared contract for project subdirectories.
+- `projects/scr1/` builds SCR1 artifacts from a pinned upstream checkout.
+- `projects/picorv32/` builds PicoRV32 artifacts from a pinned upstream checkout.
+- `projects/chipyard/` builds Chipyard artifacts from a pinned upstream checkout.
+- `projects/tb_complex_types/` builds the internal SystemVerilog waveform fixture using supported open-source simulators.
+- `projects/systemc-components/` builds MINRES SystemC-Components VCD/FST/FTR example artifacts.
+- `artifacts/` is ignored generated output and release input.
 
-- `make bootstrap` - verify external sources, verify tools, install git hooks.
-- `make tools-check` - print versions of required tooling.
-- `make sources-check` - verify external source trees are present and writable.
-- `make pre-commit` - run hooks on all files.
-- `make check-commit` - validate the current commit message.
-- `make release VERSION=vX.Y.Z` - create a GitHub release and upload all files
-  from `artifacts/` as individual assets.
+Every project directory should own these files or targets unless there is a documented reason not to:
 
-## Release Workflow (Agent-Owned)
+- `Makefile` with `image`, `download`, `prepare`, `collect`, `list`, `shell`, `clean`, `distclean`, and `help` targets.
+- `Dockerfile` for the project-specific tool image.
+- `versions.mk` for upstream source pins and tool pins.
+- `README.md` for project-local usage notes.
+- `downloads/` for source caches.
+- `work/` for prepared source trees, build output, logs, and run scratch state.
+- `.build/` for Make stamp files.
 
-- Use `make release VERSION=<version>` from the repository root.
-- The release flow must stay incremental: rely on `make collect` target validity;
-  do not force `clean` in the release path.
+## Workflow
 
-## External Source Policy
+- Use `make tools-check` to verify host prerequisites.
+- Use `make collect PROJECTS="scr1 tb_complex_types"` to run a reduced project set.
+- Use `make -C projects/<name> collect` when changing one project pipeline.
+- Use `make list` and `find "$PWD/artifacts" -type f | sort` to compare expected and actual artifacts.
+- Do not run `make artifacts-clean`, root `make clean`, or root `make distclean` unless deleting generated outputs is intended.
 
-- Upstream RTL projects are installed by `.devcontainer/Dockerfile` under `/opt`.
-- Keep upstream revisions pinned explicitly in Docker build arguments.
-- Avoid editing files inside `/opt` trees directly; bump pinned upstream revisions instead.
-- When changing pinned revisions, include upstream commit intent in commit message.
+## Release Procedure
 
-## Container Policy
+Use `make release VERSION=vX.Y.Z` only when release assets are ready and GitHub CLI is authenticated.
 
-- `.devcontainer/Dockerfile` defines a single image used both locally and in CI.
-- The devcontainer image includes standalone installs for SCR1, PicoRV32, and
-  Chipyard under `/opt`.
-- Keep tooling setup in one place; avoid parallel "dev" and "ci" variants.
-- The image should contain only tooling needed for artifact generation/inspection.
+Before a real release, run:
+
+```bash
+make tools-check
+make collect
+make list | sort > /tmp/rtl-artifacts-expected.txt
+find "$PWD/artifacts" -type f | sort > /tmp/rtl-artifacts-actual.txt
+diff -u /tmp/rtl-artifacts-expected.txt /tmp/rtl-artifacts-actual.txt
+git status --short
+```
+
+Then release:
+
+```bash
+make release VERSION=vX.Y.Z
+```
