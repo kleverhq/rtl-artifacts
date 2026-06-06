@@ -25,10 +25,7 @@ ARTIFACTS := \
 	$(ARTIFACTS_DIR)/icarus/fst/waves.fst
 
 .PHONY: help image download prepare collect list shell clean distclean \
-        verilator verilator-vcd verilator-fst icarus icarus-vcd icarus-fst \
-        questa questa-wlf questa-vcd questa-fsdb \
-        vcs vcs-vpd vcs-vcd vcs-fsdb \
-        xcelium xcelium-shm xcelium-vcd xcelium-fsdb FORCE
+        verilator verilator-vcd verilator-fst icarus icarus-vcd icarus-fst FORCE
 
 help:
 	@printf '%s\n' 'Targets:'
@@ -40,7 +37,6 @@ help:
 	@printf '  %-18s %s\n' 'shell' 'Open a debug shell in the project image.'
 	@printf '  %-18s %s\n' 'clean' 'Remove work, build stamps, and selected artifacts.'
 	@printf '  %-18s %s\n' 'distclean' 'Run clean and remove downloads too.'
-	@printf '\nOptional host/vendor targets still exist: questa, vcs, xcelium and format-specific variants.\n'
 
 image: $(IMAGE_STAMP)
 $(IMAGE_STAMP): Dockerfile .dockerignore versions.mk Makefile FORCE | $(BUILD_DIR)
@@ -117,57 +113,6 @@ verilator-fst: $(ARTIFACTS_DIR)/verilator/fst/waves.fst
 icarus: icarus-vcd icarus-fst
 icarus-vcd: $(ARTIFACTS_DIR)/icarus/vcd/waves.vcd
 icarus-fst: $(ARTIFACTS_DIR)/icarus/fst/waves.fst
-
-# Optional host/vendor-tool paths. These run outside Docker and remain outside default collect.
-WORK_DIR ?= work
-TB_SRC := $(abspath $(TB))
-QUESTA_VLOG ?= vlog
-QUESTA_VSIM ?= vsim
-VCS_BIN ?= vcs
-XCELIUM_XRUN ?= xrun
-NOVAS_HOME ?=
-VERDI_HOME ?= $(NOVAS_HOME)
-QUESTA_VLOG_FLAGS ?= -sv
-QUESTA_VSIM_FLAGS ?= -c
-VCS_FLAGS ?= -full64 -sverilog -debug_access+all
-XCELIUM_FLAGS ?= -64bit -sv -access +rwc
-
-$(WORK_DIR)/run-%:
-	mkdir -p "$@"
-
-questa: questa-wlf questa-vcd questa-fsdb
-questa-wlf: $(WORK_DIR)/run-questa-wlf
-	cd "$<" && $(QUESTA_VLOG) $(QUESTA_VLOG_FLAGS) "$(TB_SRC)"
-	cd "$<" && $(QUESTA_VSIM) $(QUESTA_VSIM_FLAGS) -wlf waves.wlf $(TOP) -do 'run -all; quit -f'
-questa-vcd: $(WORK_DIR)/run-questa-vcd
-	printf '%s\n' 'vcd file waves.vcd' 'vcd add -r /*' 'run -all' 'quit -f' > "$</run.do"
-	cd "$<" && $(QUESTA_VLOG) $(QUESTA_VLOG_FLAGS) "$(TB_SRC)"
-	cd "$<" && $(QUESTA_VSIM) $(QUESTA_VSIM_FLAGS) $(TOP) -do run.do
-questa-fsdb: $(WORK_DIR)/run-questa-fsdb
-	@test -n "$(NOVAS_HOME)" || (echo 'NOVAS_HOME is required for questa-fsdb'; exit 1)
-	cd "$<" && $(QUESTA_VLOG) $(QUESTA_VLOG_FLAGS) +define+WAVES_FSDB "$(TB_SRC)"
-	cd "$<" && LD_LIBRARY_PATH="$(NOVAS_HOME)/share/PLI/ModelSim/$$(uname -m):$$LD_LIBRARY_PATH" $(QUESTA_VSIM) $(QUESTA_VSIM_FLAGS) -pli "$(NOVAS_HOME)/share/PLI/ModelSim/$$(uname -m)/novas_fli.so" $(TOP) -do 'run -all; quit -f'
-
-vcs: vcs-vpd vcs-vcd vcs-fsdb
-vcs-vpd: $(WORK_DIR)/run-vcs-vpd
-	cd "$<" && $(VCS_BIN) $(VCS_FLAGS) +define+WAVES_VPD "$(TB_SRC)" -o simv && ./simv
-vcs-vcd: $(WORK_DIR)/run-vcs-vcd
-	cd "$<" && $(VCS_BIN) $(VCS_FLAGS) +define+WAVES_VCD "$(TB_SRC)" -o simv && ./simv
-vcs-fsdb: $(WORK_DIR)/run-vcs-fsdb
-	@test -n "$(NOVAS_HOME)" || (echo 'NOVAS_HOME is required for vcs-fsdb'; exit 1)
-	cd "$<" && $(VCS_BIN) $(VCS_FLAGS) +define+WAVES_FSDB -P "$(NOVAS_HOME)/share/PLI/VCS/LINUX64/novas.tab" "$(NOVAS_HOME)/share/PLI/VCS/LINUX64/pli.a" "$(TB_SRC)" -o simv && ./simv
-
-xcelium: xcelium-shm xcelium-vcd xcelium-fsdb
-xcelium-shm: $(WORK_DIR)/run-xcelium-shm
-	printf '%s\n' 'database -open -shm -into waves.shm waves -default' 'probe -create -database waves -depth all [scope -tops]' 'run' 'exit' > "$</waves.tcl"
-	cd "$<" && $(XCELIUM_XRUN) $(XCELIUM_FLAGS) "$(TB_SRC)" -top $(TOP) -input waves.tcl
-xcelium-vcd: $(WORK_DIR)/run-xcelium-vcd
-	printf '%s\n' 'database -open -vcd -into waves.vcd waves -default' 'probe -create -database waves -depth all [scope -tops]' 'run' 'exit' > "$</waves.tcl"
-	cd "$<" && $(XCELIUM_XRUN) $(XCELIUM_FLAGS) "$(TB_SRC)" -top $(TOP) -input waves.tcl
-xcelium-fsdb: $(WORK_DIR)/run-xcelium-fsdb
-	@test -n "$(NOVAS_HOME)" || (echo 'NOVAS_HOME is required for xcelium-fsdb'; exit 1)
-	printf '%s\n' 'call fsdbDumpfile("waves.fsdb")' 'call fsdbDumpvars(0, "tb_complex_types")' 'run' 'exit' > "$</waves.tcl"
-	cd "$<" && LD_LIBRARY_PATH="$(NOVAS_HOME)/share/PLI/IUS/LINUX64:$$LD_LIBRARY_PATH" $(XCELIUM_XRUN) $(XCELIUM_FLAGS) "$(TB_SRC)" -top $(TOP) -loadpli1 "$(NOVAS_HOME)/share/PLI/IUS/LINUX64/boot/novas_fli_boot:novas_fli_boot" -input waves.tcl
 
 define RUN_IN_CONTAINER
 mkdir -p "$(DOWNLOADS_DIR)" "$(WORK_DIR)" "$(ARTIFACTS_DIR)" "$(BUILD_DIR)" && \

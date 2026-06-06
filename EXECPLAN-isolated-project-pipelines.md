@@ -321,7 +321,7 @@ Move the existing tracked `tb_complex_types/` directory to `projects/tb_complex_
 
 Create `projects/tb_complex_types/versions.mk` even though there is no upstream repository. Use it to record tool pins such as the Verilator version used by the Dockerfile, or include a comment saying the project has no external source pins. The file exists so the standard stamp dependency graph is uniform across all projects.
 
-Create `projects/tb_complex_types/Dockerfile` for the open-source default flow. It should install Verilator, Icarus Verilog, `gtkwave` or another provider of `vcd2fst`, GNU Make, Bash, and build-essential tooling. It should not install Questa, VCS, Xcelium, or Verdi because those are vendor/licensed tools and cannot be assumed in the default Docker flow.
+Create `projects/tb_complex_types/Dockerfile` for the open-source default flow. It should install Verilator, Icarus Verilog, `gtkwave` or another provider of `vcd2fst`, GNU Make, Bash, and build-essential tooling. It should not install licensed vendor simulator tooling because those tools cannot be assumed in the default Docker flow.
 
 The default `collect` target should build the open-source artifacts that can run in the project image, but do not assume Icarus works until it is smoke-tested after the move. First validate Verilator VCD and FST. Then validate Icarus VCD and FST; if Icarus fails on classes, dynamic arrays, queues, unpacked structs, or other unsupported SystemVerilog constructs, gate those constructs with `ifdef ICARUS` or keep Icarus as an optional target until the source is fixed. Once validated, default `collect` should produce:
 
@@ -330,7 +330,7 @@ The default `collect` target should build the open-source artifacts that can run
     artifacts/tb_complex_types/icarus/vcd/waves.vcd
     artifacts/tb_complex_types/icarus/fst/waves.fst
 
-Keep optional Make targets for Questa, VCS, Xcelium, and FSDB only if they remain clearly documented as host/vendor-tool paths outside the default Docker artifact flow. Do not include them in default `collect` until their tools are available and their source compatibility has been verified.
+Keep the default `tb_complex_types` automation limited to the supported open-source simulator targets. Do not include licensed vendor simulator targets in default `collect` or project documentation.
 
 Change generated run directories to live under `work/`, not beside tracked source files. For example, use `WORK_DIR ?= work` and create `$(WORK_DIR)/run-verilator-fst` instead of `run-verilator-fst` at the project root. Then `projects/tb_complex_types/.gitignore` can be removed if the root ignore patterns cover all generated directories, or it can remain as a small local guard if useful.
 
