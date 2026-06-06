@@ -5,12 +5,14 @@ usage() {
   cat <<'EOF'
 Usage: scripts/release.sh <version>
 
-Create a GitHub release for <version>, collect artifacts incrementally, and
-upload every file reported by `make list` as an individual release asset. Nested
-artifact paths are staged under unique flat filenames by replacing '/' with '__'.
+Create a GitHub release for <version>, collect artifacts incrementally by default,
+and upload every file reported by `make list` as an individual release asset.
+Nested artifact paths are staged under unique flat filenames by replacing '/' with
+'__'.
 
 The worktree must be clean so release assets and notes match the target commit.
 Set ALLOW_DIRTY=1 only for a deliberate local dry run.
+Set SKIP_COLLECT=1 only when artifacts were already collected and verified.
 EOF
 }
 
@@ -73,8 +75,12 @@ fi
 target_commit="$(git rev-parse HEAD)"
 artifacts_dir="${ARTIFACTS_DIR:-artifacts}"
 
-echo "Collecting artifacts (incremental via make targets)..."
-ARTIFACTS_DIR="$artifacts_dir" make --no-print-directory collect
+if [[ "${SKIP_COLLECT:-0}" == "1" ]]; then
+  echo "Skipping artifact collection because SKIP_COLLECT=1."
+else
+  echo "Collecting artifacts (incremental via make targets)..."
+  ARTIFACTS_DIR="$artifacts_dir" make --no-print-directory collect
+fi
 
 if [[ ! -d "$artifacts_dir" ]]; then
   echo "Error: artifacts directory '$artifacts_dir' does not exist."

@@ -42,7 +42,7 @@ Every project directory should own these files or targets unless there is a docu
 
 ## Release Procedure
 
-Use `make release VERSION=vX.Y.Z` only when release assets are ready and GitHub CLI is authenticated.
+Use `make release VERSION=vX.Y.Z` only when release assets are ready and GitHub CLI is authenticated. It runs `make collect` by default before upload.
 
 Before a real release, run:
 
@@ -59,4 +59,10 @@ Then release:
 
 ```bash
 make release VERSION=vX.Y.Z
+```
+
+If the full artifact set was already collected and the expected/actual diff above passed, publish without rebuilding:
+
+```bash
+SKIP_COLLECT=1 make release VERSION=vX.Y.Z
 ```
